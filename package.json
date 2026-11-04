@@ -2,10 +2,26 @@
   "name": "gitspar",
   "version": "0.3.0",
   "description": "Verified Change Understanding CLI for AI-assisted code changes",
+  "license": "MIT",
   "type": "module",
   "bin": {
     "gitspar": "./dist/cli.js"
   },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "keywords": [
+    "git",
+    "ai",
+    "code-review",
+    "vibe-coding",
+    "mutation-testing",
+    "verification",
+    "vitest",
+    "ast"
+  ],
   "scripts": {
     "start": "tsx src/cli.ts",
     "build": "tsc",
