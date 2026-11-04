@@ -1,17 +1,17 @@
 import { describe, it, expect, afterAll } from 'vitest';
 import { resolve } from 'node:path';
-import { existsSync, rmSync } from 'node:fs';
+import { existsSync, rmSync, readFileSync } from 'node:fs';
 import { discoverEligibleFunctions, createBoundaryMutant } from '../src/ast.js';
 import { runIsolatedVitestCheck } from '../src/runner.js';
 import { getRepoContext } from '../src/git.js';
 import { saveReceipt, AssessmentReceipt } from '../src/receipt.js';
 
-describe('DiffProof v0.1 End-to-End Engine Verification', () => {
+describe('GitSpar v0.2.0 End-to-End Engine Verification', () => {
   const examplePath = resolve(process.cwd(), 'examples/checkoutDiscount.ts');
-  const tempMutantPath = resolve(process.cwd(), '.diffproof/temp/test-mutant.ts');
+  const tempMutantPath = resolve(process.cwd(), '.gitspar/temp/test-mutant.ts');
 
   afterAll(() => {
-    const tempDir = resolve(process.cwd(), '.diffproof/temp');
+    const tempDir = resolve(process.cwd(), '.gitspar/temp');
     if (existsSync(tempDir)) {
       try {
         rmSync(tempDir, { recursive: true, force: true });
@@ -72,8 +72,8 @@ describe('DiffProof v0.1 End-to-End Engine Verification', () => {
     expect(context.workingDiffSha256).toHaveLength(64);
   });
 
-  it('RULE 5: Receipt generation writes receipt.json and PR_RECEIPT.md', () => {
-    const testDir = resolve(process.cwd(), '.diffproof/test-receipt');
+  it('RULE 5: Receipt generation writes receipt.json and PR_RECEIPT.md in .gitspar/', () => {
+    const testDir = resolve(process.cwd(), '.gitspar/test-receipt');
     const mockReceipt: AssessmentReceipt = {
       timestamp: new Date().toISOString(),
       base_commit_sha: 'aa31e5e',
@@ -96,6 +96,10 @@ describe('DiffProof v0.1 End-to-End Engine Verification', () => {
     const saved = saveReceipt(mockReceipt, testDir);
     expect(existsSync(saved.jsonPath)).toBe(true);
     expect(existsSync(saved.markdownPath)).toBe(true);
+
+    const mdContent = readFileSync(saved.markdownPath, 'utf-8');
+    expect(mdContent).toContain('GitSpar Verification Receipt');
+    expect(mdContent).toContain('GitSpar v0.2.0');
 
     // Clean up test receipt dir
     rmSync(testDir, { recursive: true, force: true });

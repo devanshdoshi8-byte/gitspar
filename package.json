@@ -1,14 +1,16 @@
 {
-  "name": "diffproof",
-  "version": "0.1.0",
+  "name": "gitspar",
+  "version": "0.2.0",
+  "description": "Verified Change Understanding CLI for AI-assisted code changes",
   "type": "module",
   "bin": {
-    "diffproof": "./dist/cli.js"
+    "gitspar": "./dist/cli.js"
   },
   "scripts": {
     "start": "tsx src/cli.ts",
     "build": "tsc",
-    "test": "vitest run"
+    "test": "vitest run",
+    "receipt": "tsx -e \"import fs from 'node:fs'; console.log(fs.readFileSync('.gitspar/PR_RECEIPT.md', 'utf8'))\""
   },
   "dependencies": {
     "ts-morph": "^24.0.0"

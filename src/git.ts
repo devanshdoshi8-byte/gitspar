@@ -23,7 +23,7 @@ function isInternalOrTestFile(relPath: string): boolean {
   const normalized = relPath.replace(/\\/g, '/');
   return (
     EXCLUDED_PATTERNS.some((pattern) => pattern.test(normalized)) ||
-    normalized.startsWith('.diffproof/') ||
+    normalized.startsWith('.gitspar/') ||
     normalized.startsWith('.git/')
   );
 }

@@ -14,7 +14,7 @@ export function runIsolatedVitestCheck(
   expectedReturnJson: string,
   cwd: string = process.cwd()
 ): TestResult {
-  const tempDir = resolve(cwd, '.diffproof/temp');
+  const tempDir = resolve(cwd, '.gitspar/temp');
   if (!existsSync(tempDir)) {
     mkdirSync(tempDir, { recursive: true });
   }

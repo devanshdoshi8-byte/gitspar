@@ -20,7 +20,7 @@ const magenta = '\x1b[35m';
 
 function printHeader() {
   console.log(`\n${bold}${cyan}╔═══════════════════════════════════════════════════════════════════╗${reset}`);
-  console.log(`${bold}${cyan}║                      DiffProof (v0.1)                             ║${reset}`);
+  console.log(`${bold}${cyan}║                      GitSpar (v0.2.0)                             ║${reset}`);
   console.log(`${bold}${cyan}║         Verified Change Understanding Assessment CLI              ║${reset}`);
   console.log(`${bold}${cyan}╚═══════════════════════════════════════════════════════════════════╝${reset}\n`);
 }
@@ -90,6 +90,69 @@ export class PromptInterface {
   }
 }
 
+/**
+ * Smart input parser for the Blind Oracle arguments.
+ * Auto-formats comma-separated inputs (e.g. `100, false`) into a valid JSON array (`[100, false]`)
+ * with clear inline feedback.
+ */
+async function promptOracleArguments(
+  prompt: PromptInterface,
+  promptText: string
+): Promise<{ raw: string; parsed: unknown[] }> {
+  while (true) {
+    const raw = (await prompt.question(promptText)).trim();
+    if (!raw) {
+      console.log(`${red}❌ Input cannot be empty. Enter values like [100, false] or 100, false.${reset}`);
+      continue;
+    }
+
+    let candidate = raw;
+    let autoFormatted = false;
+
+    // If user omitted surrounding brackets, attempt auto-formatting
+    if (!candidate.startsWith('[') || !candidate.endsWith(']')) {
+      const bracketed = `[${candidate}]`;
+      try {
+        const testParsed = JSON.parse(bracketed);
+        if (Array.isArray(testParsed)) {
+          candidate = bracketed;
+          autoFormatted = true;
+        }
+      } catch {
+        // Attempt quoting unquoted tokens if comma-separated words were passed
+        try {
+          const tokens = candidate.split(',').map((t) => t.trim());
+          const quoted = tokens.map((t) => {
+            if (/^(?:true|false|null|-?\d+(?:\.\d+)?)$/.test(t) || (t.startsWith('"') && t.endsWith('"'))) {
+              return t;
+            }
+            return JSON.stringify(t);
+          });
+          const wrapped = `[${quoted.join(', ')}]`;
+          const testParsed = JSON.parse(wrapped);
+          if (Array.isArray(testParsed)) {
+            candidate = wrapped;
+            autoFormatted = true;
+          }
+        } catch {}
+      }
+    }
+
+    try {
+      const parsed = JSON.parse(candidate);
+      if (Array.isArray(parsed)) {
+        if (autoFormatted) {
+          console.log(`${dim}💡 Auto-formatted input to JSON array: ${cyan}${candidate}${reset}`);
+        }
+        return { raw: candidate, parsed };
+      }
+      console.log(`${red}❌ Input must be arguments matching parameters (e.g. [100, false] or 100, false).${reset}`);
+    } catch {
+      console.log(`${red}❌ Could not parse input as arguments. Enter values like [100, false] or 100, false.${reset}`);
+    }
+  }
+}
+
 async function promptValidJson<T>(
   prompt: PromptInterface,
   promptText: string,
@@ -113,7 +176,7 @@ async function promptValidJson<T>(
           return { raw: JSON.stringify(raw), parsed: parsed as T };
         }
       } catch {}
-      console.log(`${red}❌ Please enter valid JSON (e.g. [100, false] or 90).${reset}`);
+      console.log(`${red}❌ Please enter a valid JSON value (e.g. 90, true, "string").${reset}`);
     }
   }
 }
@@ -207,15 +270,9 @@ export async function runCli(): Promise<void> {
     console.log(`\nTarget Signature:`);
     console.log(`  ${bold}${green}${selectedFunction.signature}${reset}\n`);
 
-    let inputResult = await promptValidJson<unknown[]>(
+    let inputResult = await promptOracleArguments(
       prompt,
-      `${bold}Enter test input arguments as a JSON array (choose a boundary value, e.g. [100, false]): ${reset}`,
-      (parsed) => {
-        if (!Array.isArray(parsed)) {
-          return { valid: false, error: 'Input must be a JSON array of arguments matching parameters.' };
-        }
-        return { valid: true };
-      }
+      `${bold}Enter test input arguments as a JSON array (choose a boundary value, e.g. [100, false] or 100, false): ${reset}`
     );
 
     let outputResult = await promptValidJson<unknown>(
@@ -305,7 +362,7 @@ export async function runCli(): Promise<void> {
       baselineTest = 'passed';
       console.log(`\n${green}✅ Baseline passed! Generating controlled boundary mutation drill (Mode A)...${reset}`);
 
-      const tempMutantPath = resolve(cwd, '.diffproof/temp/mutant.ts');
+      const tempMutantPath = resolve(cwd, '.gitspar/temp/mutant.ts');
       mutationMeta = createBoundaryMutant(selectedFunction.filePath, selectedFunction.functionName, tempMutantPath);
 
       // Verify that mutant fails with the user's input
@@ -325,15 +382,9 @@ export async function runCli(): Promise<void> {
           `${dim}To kill the boundary mutant, specify input arguments that hit the edge boundary.${reset}\n`
         );
 
-        inputResult = await promptValidJson<unknown[]>(
+        inputResult = await promptOracleArguments(
           prompt,
-          `${bold}Enter boundary test input arguments (e.g. [100, false]): ${reset}`,
-          (parsed) => {
-            if (!Array.isArray(parsed)) {
-              return { valid: false, error: 'Input must be a JSON array.' };
-            }
-            return { valid: true };
-          }
+          `${bold}Enter boundary test input arguments (e.g. [100, false] or 100, false): ${reset}`
         );
 
         outputResult = await promptValidJson<unknown>(
@@ -423,7 +474,7 @@ export async function runCli(): Promise<void> {
     }
 
     // Clean up temporary mutant files
-    const tempDir = resolve(cwd, '.diffproof/temp');
+    const tempDir = resolve(cwd, '.gitspar/temp');
     if (existsSync(tempDir)) {
       try {
         rmSync(tempDir, { recursive: true, force: true });
@@ -462,7 +513,7 @@ export async function runCli(): Promise<void> {
 // Execute when invoked directly
 if (process.argv[1] && (process.argv[1].endsWith('cli.ts') || process.argv[1].endsWith('cli.js'))) {
   runCli().catch((err) => {
-    console.error(`\n${red}Error during DiffProof assessment:${reset}`, err);
+    console.error(`\n${red}Error during GitSpar assessment:${reset}`, err);
     process.exit(1);
   });
 }
