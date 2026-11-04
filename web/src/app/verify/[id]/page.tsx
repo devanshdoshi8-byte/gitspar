@@ -14,6 +14,8 @@ import {
   ArrowRight,
   Terminal,
   Zap,
+  EyeOff,
+  Flame,
 } from "lucide-react";
 
 interface VerificationItem {
@@ -76,6 +78,138 @@ const MOCK_VERIFICATIONS: Record<string, VerificationItem> = {
     ],
     defaultArgs: "1000, 1000",
     expectedOutput: "false",
+  },
+  "GS-8901": {
+    id: "GS-8901",
+    repo: "devanshdoshi8-byte/gitspar",
+    author: "alex-chen",
+    prNumber: 42,
+    functionName: "calculateTierDiscount",
+    file: "examples/checkoutDiscount.ts",
+    signature: "calculateTierDiscount(orderTotal: number, isStudent: boolean): number",
+    mutatedLine: 2,
+    originalOp: ">=",
+    mutatedOp: ">",
+    codeSnippet: [
+      "export function calculateTierDiscount(orderTotal: number, isStudent: boolean): number {",
+      "  if (orderTotal > 100) { // <-- MUTATED OPERATOR: >= became >",
+      "    return orderTotal * 0.9;",
+      "  }",
+      "  return isStudent ? orderTotal * 0.95 : orderTotal;",
+      "}",
+    ],
+    defaultArgs: "100, false",
+    expectedOutput: "90",
+  },
+  "GS-8902": {
+    id: "GS-8902",
+    repo: "fintech-core/settlement-engine",
+    author: "sarah-m",
+    prNumber: 128,
+    functionName: "verifySessionExpiry",
+    file: "src/auth/session.ts",
+    signature: "verifySessionExpiry(tokenIssuedAt: number, maxLifetime: number): boolean",
+    mutatedLine: 2,
+    originalOp: "<=",
+    mutatedOp: "<",
+    codeSnippet: [
+      "export function verifySessionExpiry(tokenIssuedAt: number, maxLifetime: number): boolean {",
+      "  if (Date.now() - tokenIssuedAt < maxLifetime) { // <-- MUTATED OPERATOR",
+      "    return true;",
+      "  }",
+      "  return false;",
+      "}",
+    ],
+    defaultArgs: "1000, 1000",
+    expectedOutput: "true",
+  },
+  "GS-8903": {
+    id: "GS-8903",
+    repo: "cloud-mesh/rate-limiter",
+    author: "david-k",
+    prNumber: 85,
+    functionName: "checkRateLimit",
+    file: "src/limiter/window.ts",
+    signature: "checkRateLimit(currentUsage: number, limit: number): boolean",
+    mutatedLine: 2,
+    originalOp: "<=",
+    mutatedOp: "<",
+    codeSnippet: [
+      "export function checkRateLimit(currentUsage: number, limit: number): boolean {",
+      "  if (currentUsage < limit) { // <-- MUTATED OPERATOR: <= became <",
+      "    return true;",
+      "  }",
+      "  return false;",
+      "}",
+    ],
+    defaultArgs: "100, 100",
+    expectedOutput: "true",
+  },
+  "GS-8904": {
+    id: "GS-8904",
+    repo: "health-ai/patient-triage",
+    author: "priya-sharma",
+    prNumber: 310,
+    functionName: "evaluateVitalsRisk",
+    file: "src/triage/riskScore.ts",
+    signature: "evaluateVitalsRisk(systolicBP: number, threshold: number): boolean",
+    mutatedLine: 2,
+    originalOp: ">=",
+    mutatedOp: ">",
+    codeSnippet: [
+      "export function evaluateVitalsRisk(systolicBP: number, threshold: number): boolean {",
+      "  if (systolicBP > threshold) { // <-- MUTATED OPERATOR",
+      "    return true;",
+      "  }",
+      "  return false;",
+      "}",
+    ],
+    defaultArgs: "140, 140",
+    expectedOutput: "true",
+  },
+  "GS-8905": {
+    id: "GS-8905",
+    repo: "ecommerce-hub/inventory-service",
+    author: "elena-rostova",
+    prNumber: 204,
+    functionName: "allocateWarehouseStock",
+    file: "src/stock/allocation.ts",
+    signature: "allocateWarehouseStock(availableQty: number, requestedQty: number): boolean",
+    mutatedLine: 2,
+    originalOp: ">=",
+    mutatedOp: ">",
+    codeSnippet: [
+      "export function allocateWarehouseStock(availableQty: number, requestedQty: number): boolean {",
+      "  if (availableQty > requestedQty) { // <-- MUTATED OPERATOR",
+      "    return true;",
+      "  }",
+      "  return false;",
+      "}",
+    ],
+    defaultArgs: "50, 50",
+    expectedOutput: "true",
+  },
+  "GS-8907": {
+    id: "GS-8907",
+    repo: "auth-guard/rbac-service",
+    author: "jordan-lee",
+    prNumber: 94,
+    functionName: "checkRolePermission",
+    file: "src/rbac/authorization.ts",
+    signature: "checkRolePermission(userLevel: number, requiredLevel: number): boolean",
+    mutatedLine: 2,
+    originalOp: "<=",
+    mutatedOp: "<",
+    codeSnippet: [
+      "export function checkRolePermission(userLevel: number, requiredLevel: number): boolean {",
+      "  if (userLevel < requiredLevel) { // <-- MUTATED OPERATOR",
+      "    return false;",
+      "  }",
+      "  return true;",
+      "}",
+    ],
+    defaultArgs: "10, 10",
+    expectedOutput: "true",
   },
 };
 
@@ -201,9 +335,42 @@ export default function VerifyCleanRoomPage({
                 Diagnose the Injected Mutation in <code className="text-blue-300 font-mono">{data.functionName}</code>
               </h2>
               <p className="text-xs text-slate-400 leading-relaxed">
-                A reviewer or CI pipeline triggered this clean-room challenge. Inspect the code snippet below, click on
-                the mutated line, select the intended operator, and submit your diagnostic explanation.
+                A reviewer or CI pipeline triggered this clean-room challenge. Inspect the blind oracle expectation and the
+                mutated code below, click on the faulty line, select the correct operator, and submit your diagnostic explanation.
               </p>
+            </div>
+
+            {/* Blind Independent Oracle Card */}
+            <div className="p-4 rounded-xl border border-blue-500/30 bg-blue-950/20 space-y-3 font-mono text-xs">
+              <div className="flex items-center justify-between text-blue-300 font-bold border-b border-blue-500/20 pb-2">
+                <div className="flex items-center gap-2">
+                  <EyeOff className="w-4 h-4 text-blue-400" />
+                  <span>Blind Independent Oracle Contract</span>
+                </div>
+                <span className="text-[10px] uppercase px-2 py-0.5 rounded bg-blue-500/20 text-blue-300 border border-blue-500/30">
+                  Strict Boundary Rule
+                </span>
+              </div>
+              <div className="text-slate-300 text-[11px] leading-relaxed">
+                <span className="text-slate-400">Signature: </span>
+                <code className="text-blue-300 font-semibold">{data.signature}</code>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-[11px]">
+                <div className="p-2.5 rounded-lg bg-slate-950/80 border border-slate-800">
+                  <span className="text-slate-500 block text-[10px]">INDEPENDENT TEST ARGUMENTS</span>
+                  <code className="text-white font-bold">{data.defaultArgs}</code>
+                </div>
+                <div className="p-2.5 rounded-lg bg-slate-950/80 border border-slate-800">
+                  <span className="text-slate-500 block text-[10px]">EXPECTED RETURN VALUE</span>
+                  <code className="text-emerald-400 font-bold">{data.expectedOutput}</code>
+                </div>
+              </div>
+              <div className="flex items-center gap-2 text-[11px] text-amber-300 bg-amber-950/30 border border-amber-500/20 p-2 rounded-lg">
+                <Flame className="w-4 h-4 text-amber-400 shrink-0" />
+                <span>
+                  Vitest Status: <strong>RED (FAIL)</strong> — Boundary mutant returned unexpected result against expectation.
+                </span>
+              </div>
             </div>
 
             {/* Code Inspection Block */}

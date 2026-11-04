@@ -140,6 +140,10 @@ export default function DemoPage() {
 
   const handleValidateRepair = () => {
     setRepairError(null);
+    if (!selectedLine) {
+      setRepairError("Please click on the faulty line in the code editor above.");
+      return;
+    }
     if (selectedLine !== sample.mutatedLine) {
       setRepairError(`Line ${selectedLine} is not the mutated defect. Look for the boundary comparison.`);
       return;

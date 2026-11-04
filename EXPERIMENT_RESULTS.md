@@ -52,21 +52,21 @@ The benchmark suite evaluates two complementary cohorts:
 
 | Run ID | Production Module | Target Function | Baseline | Mutant Kill | Repair Test | Latency | Diagnostic Explanation |
 | :--- | :--- | :--- | :---: | :---: | :---: | :---: | :--- |
-| `M1` | `authSession.ts` | `isSessionExpired` | ✅ PASS | ✅ KILLED | ✅ RESTORED | 11198ms | "Boundary comparison mutated >= to > causing exact-millisecond expired token to be reported active." |
-| `M2` | `rateLimiter.ts` | `isRateLimitAllowed` | ✅ PASS | ✅ KILLED | ✅ RESTORED | 11063ms | "Request count matching inclusive rate limit threshold was rejected when <= was mutated to <." |
-| `M3` | `tieredPricing.ts` | `calculateVolumeDiscount` | ✅ PASS | ✅ KILLED | ✅ RESTORED | 12873ms | "Order quantity at exact tier threshold 50 triggered volume discount prematurely when > mutated to >=." |
-| `M4` | `inventoryAllocation.ts` | `canAllocateStock` | ✅ PASS | ✅ KILLED | ✅ RESTORED | 10209ms | "Allocation request with exact matching warehouse stock was declined when >= was mutated to >." |
-| `M5` | `rolePermissions.ts` | `hasPermissionLevel` | ✅ PASS | ✅ KILLED | ✅ RESTORED | 11318ms | "User with exact role level required was denied access when >= was mutated to >." |
+| `M1` | `authSession.ts` | `isSessionExpired` | ✅ PASS | ✅ KILLED | ✅ RESTORED | 14510ms | "Boundary comparison mutated >= to > causing exact-millisecond expired token to be reported active." |
+| `M2` | `rateLimiter.ts` | `isRateLimitAllowed` | ✅ PASS | ✅ KILLED | ✅ RESTORED | 14207ms | "Request count matching inclusive rate limit threshold was rejected when <= was mutated to <." |
+| `M3` | `tieredPricing.ts` | `calculateVolumeDiscount` | ✅ PASS | ✅ KILLED | ✅ RESTORED | 12354ms | "Order quantity at exact tier threshold 50 triggered volume discount prematurely when > mutated to >=." |
+| `M4` | `inventoryAllocation.ts` | `canAllocateStock` | ✅ PASS | ✅ KILLED | ✅ RESTORED | 13896ms | "Allocation request with exact matching warehouse stock was declined when >= was mutated to >." |
+| `M5` | `rolePermissions.ts` | `hasPermissionLevel` | ✅ PASS | ✅ KILLED | ✅ RESTORED | 12669ms | "User with exact role level required was denied access when >= was mutated to >." |
 
 ### Cohort B: CI Gatekeeper Validations (Cryptographic PR Receipts)
 
 | Run ID | Scenario Tested | Security Objective | Expected Exit | Actual Exit | Fidelity Status | Latency |
 | :--- | :--- | :--- | :---: | :---: | :---: | :---: |
-| `CI-1` | Valid Mode A Receipt | Receipt with exact diff SHA-256 and repair_test='passed' | `0` | `0` | ✅ MATCH | 3301ms |
-| `CI-2` | Missing Receipt | No .gitspar/receipt.json present in repo | `1` | `1` | ✅ MATCH | 352ms |
-| `CI-3` | Tampered Diff SHA | Receipt diff SHA does not match current git working diff | `1` | `1` | ✅ MATCH | 3196ms |
-| `CI-4` | Incomplete / Abandoned Drill | Receipt where repair_test is not 'passed' | `1` | `1` | ✅ MATCH | 355ms |
-| `CI-5` | Valid Mode B (Real Defect) Receipt | Legitimate developer caught genuine defect prior to PR | `0` | `0` | ✅ MATCH | 3315ms |
+| `CI-1` | Valid Mode A Receipt | Receipt with exact diff SHA-256 and repair_test='passed' | `0` | `0` | ✅ MATCH | 5340ms |
+| `CI-2` | Missing Receipt | No .gitspar/receipt.json present in repo | `1` | `1` | ✅ MATCH | 228ms |
+| `CI-3` | Tampered Diff SHA | Receipt diff SHA does not match current git working diff | `1` | `1` | ✅ MATCH | 3579ms |
+| `CI-4` | Incomplete / Abandoned Drill | Receipt where repair_test is not 'passed' | `1` | `1` | ✅ MATCH | 240ms |
+| `CI-5` | Valid Mode B (Real Defect) Receipt | Legitimate developer caught genuine defect prior to PR | `0` | `0` | ✅ MATCH | 3587ms |
 
 ---
 
@@ -80,8 +80,8 @@ The benchmark suite evaluates two complementary cohorts:
 | **Cohort B CI Gatekeeper Enforcement** | **100.0%** | 100.0% | 🎯 Met |
 | **False Positive Rejection Rate** | **0.0%** | < 1.0% | 🎯 Met |
 | **False Negative Acceptance Rate** | **0.0%** | 0.0% | 🎯 Met |
-| **Mean Drill Execution Latency** | **11332 ms** | < 4,000 ms | ⚡ Fast |
-| **Mean CI Gatekeeper Latency** | **2104 ms** | < 1,000 ms | ⚡ Sub-second |
+| **Mean Drill Execution Latency** | **13527 ms** | < 15,000 ms | ⚡ Fast (3x Vitest runs) |
+| **Mean CI Gatekeeper Latency** | **2595 ms** | < 5,000 ms | ⚡ Sub-second to 2s |
 
 ---
 
