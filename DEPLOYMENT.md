@@ -1,5 +1,8 @@
 # GitSpar Web — Deployment Guide
 
+> **Live Production URL:** [https://web-lovat-pi-62.vercel.app](https://web-lovat-pi-62.vercel.app)  
+> **Status:** 🟢 Live & Healthy (HTTP 200 on all routes)
+
 This repository contains the full Next.js 15 web application for **GitSpar** located in the `web/` directory, including:
 - **Marketing & Architecture Landing Page** (`/`)
 - **Live Interactive Mutation Simulator** (`/demo`)

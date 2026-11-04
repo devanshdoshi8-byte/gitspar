@@ -10,11 +10,12 @@
 ---
 
 ### 🌐 Live Web Portal & Interactive Simulator
-- **Live Interactive Mutation Simulator:** [Try the Web Sandbox](https://gitspar-web.vercel.app/demo) or run `npm run web:dev` locally.
-- **Reviewer & Hackathon Leaderboard:** [Open Organizer Dashboard](https://gitspar-web.vercel.app/dashboard).
-- **Clean-Room Verification Portal:** [Timed Assessment Route](https://gitspar-web.vercel.app/verify/PR-1082).
+- **Live Production App:** [https://web-lovat-pi-62.vercel.app](https://web-lovat-pi-62.vercel.app)
+- **Live Interactive Mutation Simulator:** [https://web-lovat-pi-62.vercel.app/demo](https://web-lovat-pi-62.vercel.app/demo)
+- **Reviewer & Hackathon Leaderboard:** [https://web-lovat-pi-62.vercel.app/dashboard](https://web-lovat-pi-62.vercel.app/dashboard)
+- **Clean-Room Verification Portal:** [https://web-lovat-pi-62.vercel.app/verify/PR-1082](https://web-lovat-pi-62.vercel.app/verify/PR-1082)
 - **Empirical Research Benchmark Report:** [EXPERIMENT_RESULTS.md](EXPERIMENT_RESULTS.md) (100% mutant kill rate & CI enforcement).
-- **Vercel 1-Click Deployment Guide:** [DEPLOYMENT.md](DEPLOYMENT.md).
+- **Vercel Deployment Guide:** [DEPLOYMENT.md](DEPLOYMENT.md).
 
 ---
 
