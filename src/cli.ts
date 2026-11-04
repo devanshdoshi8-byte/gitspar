@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { createInterface } from 'node:readline/promises';
+import * as readline from 'node:readline';
 import { stdin as input, stdout as output } from 'node:process';
 import { resolve, relative } from 'node:path';
 import { existsSync, rmSync } from 'node:fs';
@@ -25,13 +25,78 @@ function printHeader() {
   console.log(`${bold}${cyan}╚═══════════════════════════════════════════════════════════════════╝${reset}\n`);
 }
 
+/**
+ * Universal prompt interface using node:readline.
+ * Supports both interactive terminal (TTY) and piped input (tests, scripts).
+ */
+export class PromptInterface {
+  private rl: readline.Interface;
+  private queuedLines: string[] = [];
+  private resolvers: ((line: string) => void)[] = [];
+  private isClosed = false;
+
+  constructor() {
+    this.rl = readline.createInterface({
+      input,
+      output,
+      terminal: input.isTTY ?? false,
+    });
+
+    this.rl.on('line', (line) => {
+      if (this.resolvers.length > 0) {
+        const resolveFn = this.resolvers.shift()!;
+        resolveFn(line);
+      } else {
+        this.queuedLines.push(line);
+      }
+    });
+
+    this.rl.on('close', () => {
+      this.isClosed = true;
+      while (this.resolvers.length > 0) {
+        const resolveFn = this.resolvers.shift()!;
+        resolveFn('');
+      }
+    });
+  }
+
+  async question(promptText: string): Promise<string> {
+    output.write(promptText);
+
+    if (this.queuedLines.length > 0) {
+      const line = this.queuedLines.shift()!;
+      if (!input.isTTY) {
+        output.write(line + '\n');
+      }
+      return line;
+    }
+
+    if (this.isClosed) {
+      return '';
+    }
+
+    return new Promise<string>((resolve) => {
+      this.resolvers.push((line) => {
+        if (!input.isTTY) {
+          output.write(line + '\n');
+        }
+        resolve(line);
+      });
+    });
+  }
+
+  close() {
+    this.rl.close();
+  }
+}
+
 async function promptValidJson<T>(
-  rl: ReturnType<typeof createInterface>,
+  prompt: PromptInterface,
   promptText: string,
   validator: (parsed: unknown) => { valid: boolean; error?: string }
 ): Promise<{ raw: string; parsed: T }> {
   while (true) {
-    const raw = (await rl.question(promptText)).trim();
+    const raw = (await prompt.question(promptText)).trim();
     try {
       const parsed = JSON.parse(raw);
       const check = validator(parsed);
@@ -40,7 +105,7 @@ async function promptValidJson<T>(
       }
       console.log(`${red}❌ ${check.error || 'Invalid input.'}${reset}`);
     } catch {
-      // If user typed a raw string or single token
+      // If user typed a plain string or primitive without surrounding quotes
       try {
         const parsed = JSON.parse(`"${raw}"`);
         const check = validator(parsed);
@@ -54,7 +119,7 @@ async function promptValidJson<T>(
 }
 
 export async function runCli(): Promise<void> {
-  const rl = createInterface({ input, output });
+  const prompt = new PromptInterface();
   const cwd = process.cwd();
 
   try {
@@ -92,7 +157,7 @@ export async function runCli(): Promise<void> {
       if (!directFileArg) {
         console.log(`${dim}Tip: You can target a file directly: npx tsx src/cli.ts <path/to/file.ts>${reset}\n`);
       }
-      rl.close();
+      prompt.close();
       return;
     }
 
@@ -107,7 +172,7 @@ export async function runCli(): Promise<void> {
     let selectedFunction: EligibleFunction = eligibleFunctions[0];
     if (eligibleFunctions.length > 1) {
       while (true) {
-        const choiceRaw = await rl.question(`\nSelect a function to assess (1-${eligibleFunctions.length}): `);
+        const choiceRaw = await prompt.question(`\nSelect a function to assess (1-${eligibleFunctions.length}): `);
         const choice = parseInt(choiceRaw.trim(), 10);
         if (!isNaN(choice) && choice >= 1 && choice <= eligibleFunctions.length) {
           selectedFunction = eligibleFunctions[choice - 1];
@@ -121,7 +186,7 @@ export async function runCli(): Promise<void> {
 
     // Explicit User Execution Approval (Rule 3)
     const approval = (
-      await rl.question(
+      await prompt.question(
         `\n${yellow}Approve running this function in a local Vitest harness? (y/n): ${reset}`
       )
     )
@@ -130,7 +195,7 @@ export async function runCli(): Promise<void> {
 
     if (approval !== 'y' && approval !== 'yes') {
       console.log(`${red}Execution cancelled by user.${reset}`);
-      rl.close();
+      prompt.close();
       return;
     }
 
@@ -143,7 +208,7 @@ export async function runCli(): Promise<void> {
     console.log(`  ${bold}${green}${selectedFunction.signature}${reset}\n`);
 
     let inputResult = await promptValidJson<unknown[]>(
-      rl,
+      prompt,
       `${bold}Enter test input arguments as a JSON array (choose a boundary value, e.g. [100, false]): ${reset}`,
       (parsed) => {
         if (!Array.isArray(parsed)) {
@@ -154,7 +219,7 @@ export async function runCli(): Promise<void> {
     );
 
     let outputResult = await promptValidJson<unknown>(
-      rl,
+      prompt,
       `${bold}Without looking at the code body, what is the required return value for that input? (e.g. 90): ${reset}`,
       () => ({ valid: true })
     );
@@ -189,7 +254,7 @@ export async function runCli(): Promise<void> {
       console.log('');
 
       while (true) {
-        const lineStr = (await rl.question(`${bold}Which line number contains the defect? ${reset}`)).trim();
+        const lineStr = (await prompt.question(`${bold}Which line number contains the defect? ${reset}`)).trim();
         const line = parseInt(lineStr, 10);
         if (!isNaN(line) && line >= selectedFunction.startLine && line <= selectedFunction.endLine) {
           diagnosedLine = line;
@@ -205,7 +270,7 @@ export async function runCli(): Promise<void> {
       );
 
       while (true) {
-        await rl.question(`Press [Enter] once you have saved your fix to re-run Vitest: `);
+        await prompt.question(`Press [Enter] once you have saved your fix to re-run Vitest: `);
         const retryResult = runIsolatedVitestCheck(
           selectedFunction.filePath,
           selectedFunction.functionName,
@@ -223,7 +288,7 @@ export async function runCli(): Promise<void> {
 
       while (true) {
         explanation = (
-          await rl.question(
+          await prompt.question(
             `\n${bold}In 1 sentence, explain the real defect you fixed (min 15 chars): ${reset}`
           )
         ).trim();
@@ -261,7 +326,7 @@ export async function runCli(): Promise<void> {
         );
 
         inputResult = await promptValidJson<unknown[]>(
-          rl,
+          prompt,
           `${bold}Enter boundary test input arguments (e.g. [100, false]): ${reset}`,
           (parsed) => {
             if (!Array.isArray(parsed)) {
@@ -272,7 +337,7 @@ export async function runCli(): Promise<void> {
         );
 
         outputResult = await promptValidJson<unknown>(
-          rl,
+          prompt,
           `${bold}What is the required return value for that boundary input?: ${reset}`,
           () => ({ valid: true })
         );
@@ -310,7 +375,7 @@ export async function runCli(): Promise<void> {
       // Prompt 1: Diagnose line
       while (true) {
         const lineStr = (
-          await rl.question(`${bold}Which line number contains the broken boundary condition? ${reset}`)
+          await prompt.question(`${bold}Which line number contains the broken boundary condition? ${reset}`)
         ).trim();
         const line = parseInt(lineStr, 10);
         if (line === mutationMeta.mutatedLine) {
@@ -325,7 +390,7 @@ export async function runCli(): Promise<void> {
 
       // Prompt 2: Correct operator
       const correctOp = (
-        await rl.question(
+        await prompt.question(
           `${bold}What should the correct operator/expression on that line be? ${reset}`
         )
       ).trim();
@@ -333,7 +398,7 @@ export async function runCli(): Promise<void> {
       // Prompt 3: Explanation
       while (true) {
         explanation = (
-          await rl.question(
+          await prompt.question(
             `\n${bold}In 1 sentence, explain why this boundary mutation caused your test input to fail: ${reset}`
           )
         ).trim();
@@ -390,12 +455,12 @@ export async function runCli(): Promise<void> {
     console.log(`  📄 JSON Receipt: ${cyan}${saved.jsonPath}${reset}`);
     console.log(`  📋 PR Markdown:  ${cyan}${saved.markdownPath}${reset}\n`);
   } finally {
-    rl.close();
+    prompt.close();
   }
 }
 
 // Execute when invoked directly
-if (process.argv[1] && process.argv[1].endsWith('cli.ts')) {
+if (process.argv[1] && (process.argv[1].endsWith('cli.ts') || process.argv[1].endsWith('cli.js'))) {
   runCli().catch((err) => {
     console.error(`\n${red}Error during DiffProof assessment:${reset}`, err);
     process.exit(1);
