@@ -1,6 +1,6 @@
 {
-  "timestamp": "2026-11-04T19:05:17.413Z",
-  "base_commit_sha": "956997b71df3ac726486a689a76992c68bce117b",
+  "timestamp": "2026-11-04T19:49:46.587Z",
+  "base_commit_sha": "e649e17daa785c2b4677310a236e490222fccb35",
   "working_diff_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
   "mode": "mutation_drill",
   "language": "typescript",
@@ -12,10 +12,10 @@
     false
   ],
   "oracle_expected_output": 90,
-  "mutation_operator": ">",
+  "mutation_operator": ">=",
   "baseline_test": "passed",
   "mutation_test": "failed",
   "repair_test": "passed",
   "diagnosed_line": 2,
-  "explanation": "Boundary mutation flipped operator so 100 was not discounted"
+  "explanation": "Restored boundary discount operator for tier 100."
 }

@@ -9,6 +9,15 @@
 
 ---
 
+### 🌐 Live Web Portal & Interactive Simulator
+- **Live Interactive Mutation Simulator:** [Try the Web Sandbox](https://gitspar-web.vercel.app/demo) or run `npm run web:dev` locally.
+- **Reviewer & Hackathon Leaderboard:** [Open Organizer Dashboard](https://gitspar-web.vercel.app/dashboard).
+- **Clean-Room Verification Portal:** [Timed Assessment Route](https://gitspar-web.vercel.app/verify/PR-1082).
+- **Empirical Research Benchmark Report:** [EXPERIMENT_RESULTS.md](EXPERIMENT_RESULTS.md) (100% mutant kill rate & CI enforcement).
+- **Vercel 1-Click Deployment Guide:** [DEPLOYMENT.md](DEPLOYMENT.md).
+
+---
+
 ## 🌪️ The Problem
 
 In the modern AI coding landscape (Antigravity, Cursor, Claude Code, GitHub Copilot, Codex, Windsurf), developers and students generate hundreds of lines of code in seconds ("vibe coding"). While raw speed has skyrocketed, it has opened two critical vulnerabilities:

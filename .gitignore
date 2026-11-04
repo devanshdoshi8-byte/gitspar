@@ -1,5 +1,9 @@
 node_modules/
 dist/
 .gitspar/temp/
+.gitspar/benchmark-temp/
 *.tgz
 .env*
+.next/
+web/.next/
+web/node_modules/
