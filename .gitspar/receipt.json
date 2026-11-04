@@ -1,7 +1,7 @@
 {
-  "timestamp": "2026-11-04T18:49:42.319Z",
-  "base_commit_sha": "9312c68b32512305cbf17e621335b34ad439d26c",
-  "working_diff_sha256": "2a31ad2bcaff16bb684646d3d07485eb5591e4349fa0f5324717f41e93ed1e0d",
+  "timestamp": "2026-11-04T19:05:17.413Z",
+  "base_commit_sha": "956997b71df3ac726486a689a76992c68bce117b",
+  "working_diff_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
   "mode": "mutation_drill",
   "language": "typescript",
   "target_file": "examples/checkoutDiscount.ts",
@@ -17,5 +17,5 @@
   "mutation_test": "failed",
   "repair_test": "passed",
   "diagnosed_line": 2,
-  "explanation": "Boundary mutation flipped >= to > so orderTotal of 100 did not receive discount"
+  "explanation": "Boundary mutation flipped operator so 100 was not discounted"
 }

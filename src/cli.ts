@@ -2,11 +2,18 @@
 import * as readline from 'node:readline';
 import { stdin as input, stdout as output } from 'node:process';
 import { resolve, relative } from 'node:path';
-import { existsSync, rmSync } from 'node:fs';
-import { getRepoContext } from './git.js';
+import { existsSync, rmSync, readFileSync } from 'node:fs';
+import {
+  getRepoContext,
+  resolveBaseRef,
+  refExists,
+  computeDiffHashForRef,
+  computeDiffHashForTarget,
+} from './git.js';
 import { discoverEligibleFunctions, createBoundaryMutant, EligibleFunction, MutationResult } from './ast.js';
 import { runIsolatedVitestCheck } from './runner.js';
 import { saveReceipt, AssessmentReceipt } from './receipt.js';
+import { loadGitSparConfig } from './config.js';
 
 // ANSI styling helpers (Rule 5: Zero-conflict, no chalk/inquirer)
 const reset = '\x1b[0m';
@@ -20,7 +27,7 @@ const magenta = '\x1b[35m';
 
 function printHeader() {
   console.log(`\n${bold}${cyan}╔═══════════════════════════════════════════════════════════════════╗${reset}`);
-  console.log(`${bold}${cyan}║                      GitSpar (v0.2.0)                             ║${reset}`);
+  console.log(`${bold}${cyan}║                      GitSpar (v0.3.0)                             ║${reset}`);
   console.log(`${bold}${cyan}║         Verified Change Understanding Assessment CLI              ║${reset}`);
   console.log(`${bold}${cyan}╚═══════════════════════════════════════════════════════════════════╝${reset}\n`);
 }
@@ -181,6 +188,98 @@ async function promptValidJson<T>(
   }
 }
 
+/**
+ * Non-Interactive / CI Mode Checker.
+ * Verifies that uncommitted or PR changes have a corresponding valid GitSpar receipt.
+ */
+export async function runCiCheck(cwd: string = process.cwd()): Promise<number> {
+  console.log(`\n${bold}${cyan}╔═══════════════════════════════════════════════════════════════════╗${reset}`);
+  console.log(`${bold}${cyan}║                      GitSpar (v0.3.0)                             ║${reset}`);
+  console.log(`${bold}${cyan}║                   CI / Non-Interactive Check                      ║${reset}`);
+  console.log(`${bold}${cyan}╚═══════════════════════════════════════════════════════════════════╝${reset}\n`);
+
+  const config = loadGitSparConfig(cwd);
+  const baseRef = resolveBaseRef(cwd, config?.baseBranch);
+  const receiptPath = resolve(cwd, '.gitspar/receipt.json');
+
+  if (!existsSync(receiptPath)) {
+    console.error(
+      `${red}❌ GitSpar Check Failed: Working tree has unverified changes. Run \`npx gitspar\` locally to verify your changes before pushing.${reset}\n`
+    );
+    return 1;
+  }
+
+  let receipt: AssessmentReceipt;
+  try {
+    receipt = JSON.parse(readFileSync(receiptPath, 'utf-8'));
+  } catch {
+    console.error(
+      `${red}❌ GitSpar Check Failed: Working tree has unverified changes. Run \`npx gitspar\` locally to verify your changes before pushing.${reset}\n`
+    );
+    return 1;
+  }
+
+  // Verify that receipt status is complete and passing
+  if (!receipt.working_diff_sha256 || receipt.repair_test !== 'passed') {
+    console.error(
+      `${red}❌ GitSpar Check Failed: Working tree has unverified changes. Run \`npx gitspar\` locally to verify your changes before pushing.${reset}\n`
+    );
+    return 1;
+  }
+
+  const ciContext = getRepoContext(cwd, { ciMode: true, baseRef });
+  const localContext = getRepoContext(cwd, { ciMode: false });
+
+  // Compute potential candidate diff hashes for comparison:
+  // 1. CI diff against baseRef (e.g. origin/main...HEAD)
+  // 2. Local diff against HEAD
+  const candidateHashes = new Set<string>([
+    ciContext.workingDiffSha256,
+    localContext.workingDiffSha256,
+  ]);
+
+  if (receipt.target_file) {
+    candidateHashes.add(computeDiffHashForTarget(cwd, receipt.target_file, baseRef));
+    candidateHashes.add(computeDiffHashForTarget(cwd, receipt.target_file, 'HEAD'));
+    if (receipt.base_commit_sha && refExists(receipt.base_commit_sha, cwd)) {
+      candidateHashes.add(computeDiffHashForTarget(cwd, receipt.target_file, receipt.base_commit_sha));
+    }
+  }
+
+  // 3. Diff against receipt's recorded base_commit_sha (if still present in git history)
+  if (receipt.base_commit_sha && refExists(receipt.base_commit_sha, cwd)) {
+    candidateHashes.add(computeDiffHashForRef(cwd, `${receipt.base_commit_sha}...HEAD`, receipt.target_file));
+    candidateHashes.add(computeDiffHashForRef(cwd, receipt.base_commit_sha, receipt.target_file));
+  }
+
+  // 4. Diff against resolved baseRef
+  if (baseRef && baseRef !== 'HEAD') {
+    candidateHashes.add(computeDiffHashForRef(cwd, `${baseRef}...HEAD`, receipt.target_file));
+    candidateHashes.add(computeDiffHashForRef(cwd, baseRef, receipt.target_file));
+  }
+
+  const isVerified = candidateHashes.has(receipt.working_diff_sha256);
+
+  if (!isVerified) {
+    console.error(
+      `${red}❌ GitSpar Check Failed: Working tree has unverified changes. Run \`npx gitspar\` locally to verify your changes before pushing.${reset}\n`
+    );
+    return 1;
+  }
+
+  console.log(`${dim}Base Ref / Diff Target:${reset} ${baseRef}`);
+  console.log(`${dim}Working Diff SHA-256:${reset}  ${receipt.working_diff_sha256}`);
+  console.log(`${dim}Verified Function:${reset}     ${cyan}${receipt.function_name}${reset} (${receipt.target_file})`);
+  console.log(`${dim}Assessment Mode:${reset}       ${receipt.mode}`);
+  console.log(`${dim}Diagnosed Line:${reset}        Line ${receipt.diagnosed_line}`);
+  console.log(`${dim}Diagnostic Proof:${reset}      "${receipt.explanation}"\n`);
+  console.log(
+    `${bold}${green}✅ GitSpar Check Passed: Verified change receipt matches current working tree / commit diff.${reset}\n`
+  );
+
+  return 0;
+}
+
 export async function runCli(): Promise<void> {
   const prompt = new PromptInterface();
   const cwd = process.cwd();
@@ -194,7 +293,7 @@ export async function runCli(): Promise<void> {
     console.log(`${dim}Working Diff SHA-256:${reset} ${repoContext.workingDiffSha256}\n`);
 
     let targetFiles: string[] = [];
-    const directFileArg = process.argv[2];
+    const directFileArg = process.argv.slice(2).find((arg) => !arg.startsWith('--'));
 
     if (directFileArg) {
       const fullDirectPath = resolve(cwd, directFileArg);
@@ -218,7 +317,7 @@ export async function runCli(): Promise<void> {
         `${yellow}No eligible pure TypeScript functions with boundary conditions detected in working tree.${reset}`
       );
       if (!directFileArg) {
-        console.log(`${dim}Tip: You can target a file directly: npx tsx src/cli.ts <path/to/file.ts>${reset}\n`);
+        console.log(`${dim}Tip: You can target a file directly: npx gitspar <path/to/file.ts>${reset}\n`);
       }
       prompt.close();
       return;
@@ -512,8 +611,18 @@ export async function runCli(): Promise<void> {
 
 // Execute when invoked directly
 if (process.argv[1] && (process.argv[1].endsWith('cli.ts') || process.argv[1].endsWith('cli.js'))) {
-  runCli().catch((err) => {
-    console.error(`\n${red}Error during GitSpar assessment:${reset}`, err);
-    process.exit(1);
-  });
+  const isCi = process.argv.includes('--ci') || process.argv.includes('--check');
+  if (isCi) {
+    runCiCheck()
+      .then((code) => process.exit(code))
+      .catch((err) => {
+        console.error(`\n${red}Error during GitSpar CI check:${reset}`, err);
+        process.exit(1);
+      });
+  } else {
+    runCli().catch((err) => {
+      console.error(`\n${red}Error during GitSpar assessment:${reset}`, err);
+      process.exit(1);
+    });
+  }
 }

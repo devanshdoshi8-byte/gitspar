@@ -1,12 +1,14 @@
 import { describe, it, expect, afterAll } from 'vitest';
 import { resolve } from 'node:path';
-import { existsSync, rmSync, readFileSync } from 'node:fs';
+import { existsSync, rmSync, readFileSync, mkdirSync } from 'node:fs';
 import { discoverEligibleFunctions, createBoundaryMutant } from '../src/ast.js';
 import { runIsolatedVitestCheck } from '../src/runner.js';
-import { getRepoContext } from '../src/git.js';
+import { getRepoContext, resolveBaseRef } from '../src/git.js';
 import { saveReceipt, AssessmentReceipt } from '../src/receipt.js';
+import { runCiCheck } from '../src/cli.js';
+import { loadGitSparConfig } from '../src/config.js';
 
-describe('GitSpar v0.2.0 End-to-End Engine Verification', () => {
+describe('GitSpar v0.3.0 End-to-End Engine & CI Verification', () => {
   const examplePath = resolve(process.cwd(), 'examples/checkoutDiscount.ts');
   const tempMutantPath = resolve(process.cwd(), '.gitspar/temp/test-mutant.ts');
 
@@ -99,9 +101,28 @@ describe('GitSpar v0.2.0 End-to-End Engine Verification', () => {
 
     const mdContent = readFileSync(saved.markdownPath, 'utf-8');
     expect(mdContent).toContain('GitSpar Verification Receipt');
-    expect(mdContent).toContain('GitSpar v0.2.0');
+    expect(mdContent).toContain('GitSpar v0.3.0');
 
     // Clean up test receipt dir
     rmSync(testDir, { recursive: true, force: true });
+  });
+
+  it('CI Mode: resolveBaseRef resolves a viable comparison base ref', () => {
+    const baseRef = resolveBaseRef(process.cwd());
+    expect(typeof baseRef).toBe('string');
+    expect(baseRef.length).toBeGreaterThan(0);
+  });
+
+  it('CI Mode: runCiCheck returns 0 (PASS) when a valid receipt exists', async () => {
+    const code = await runCiCheck(process.cwd());
+    expect(code).toBe(0);
+  });
+
+  it('CI Mode: runCiCheck returns 1 (FAIL) when receipt is missing', async () => {
+    const dummyDir = resolve(process.cwd(), '.gitspar/empty-check');
+    mkdirSync(dummyDir, { recursive: true });
+    const code = await runCiCheck(dummyDir);
+    expect(code).toBe(1);
+    rmSync(dummyDir, { recursive: true, force: true });
   });
 });
