@@ -119,11 +119,10 @@ export default function LandingPage() {
       <section id="problem" className="px-4 sm:px-6 lg:px-8 max-w-7xl mx-auto w-full">
         <div className="text-center mb-12">
           <h2 className="text-2xl sm:text-4xl font-bold text-white tracking-tight">
-            The Illusion of Competence in AI Development
+            Why Passing Tests Aren&apos;t Enough
           </h2>
           <p className="mt-3 text-slate-400 text-base max-w-2xl mx-auto">
-            LLMs make generating 500 lines trivial. GitSpar guarantees you can actually maintain, diagnose, and defend
-            what you commit.
+            AI makes generating code fast. GitSpar ensures you understand boundary conditions, edge cases, and failure modes before you commit.
           </p>
         </div>
 
@@ -137,7 +136,7 @@ export default function LandingPage() {
               </div>
               <div>
                 <h3 className="text-xl font-bold text-white">Vibe-Coding Cognitive Debt</h3>
-                <span className="text-xs text-red-400 font-mono">The AI Acceptance Trap</span>
+                <span className="text-xs text-red-400 font-mono">The Comprehension Gap</span>
               </div>
             </div>
 
@@ -310,11 +309,11 @@ export default function LandingPage() {
         </div>
       </section>
 
-      {/* Strategic Differentiation Table */}
+      {/* Comparison Table */}
       <section id="differentiation" className="px-4 sm:px-6 lg:px-8 max-w-7xl mx-auto w-full">
         <div className="text-center mb-12">
           <h2 className="text-2xl sm:text-4xl font-bold text-white tracking-tight">
-            Strategic Differentiation Matrix
+            How GitSpar Compares
           </h2>
           <p className="mt-3 text-slate-400 text-base max-w-2xl mx-auto">
             Why executable mutation testing renders conversational quizzes and sandbox benchmarks obsolete.
@@ -394,8 +393,8 @@ export default function LandingPage() {
         <div className="space-y-4">
           {[
             {
-              q: "Why won't native IDEs like Cursor or Copilot kill GitSpar?",
-              a: "Cursor and Copilot are creation tools biased toward frictionless code output. They cannot serve as neutral gatekeepers. GitSpar functions as an objective, reviewer-facing compliance and diagnostic engine that verifies comprehension before pull requests can merge. Just as Git didn't eliminate CI/CD, assistive editors will never eliminate verification gates.",
+              q: "How does GitSpar work alongside AI editors like Cursor, Copilot, and Antigravity?",
+              a: "AI editors like Cursor, GitHub Copilot, and Antigravity are creation tools designed for high-velocity code generation inside the IDE. GitSpar serves as an editor-agnostic verification gatekeeper that runs locally before push (or in CI). Just as Git and Vitest complement IDE code writing, GitSpar ensures that code generated with AI assistance is fully understood, diagnosed, and tested before merging.",
             },
             {
               q: "Why are executable AST mutations superior to conversational quizzes?",

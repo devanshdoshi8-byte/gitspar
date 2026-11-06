@@ -34,7 +34,7 @@ interface VerificationItem {
   expectedOutput: string;
 }
 
-const MOCK_VERIFICATIONS: Record<string, VerificationItem> = {
+const SAMPLE_PR_CHALLENGES: Record<string, VerificationItem> = {
   "PR-1082": {
     id: "PR-1082",
     repo: "devanshdoshi8-byte/gitspar",
@@ -219,10 +219,10 @@ export default function VerifyCleanRoomPage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = use(params);
-  const data = MOCK_VERIFICATIONS[id] || {
+  const data = SAMPLE_PR_CHALLENGES[id] || {
     id: id || "CUSTOM-VERIFY",
-    repo: "hackathon-team/microservice",
-    author: "candidate-dev",
+    repo: "acme-auth/session-guard",
+    author: "dev-lead",
     prNumber: 99,
     functionName: "verifyRateLimit",
     file: "src/limiter.ts",

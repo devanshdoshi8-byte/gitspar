@@ -7,7 +7,7 @@ This repository contains the full Next.js 15 web application for **GitSpar** loc
 - **Marketing & Architecture Landing Page** (`/`)
 - **Live Interactive Mutation Simulator** (`/demo`)
 - **Clean-Room Verification Portal** (`/verify/[id]`)
-- **Reviewer & Hackathon Leaderboard Dashboard** (`/dashboard`)
+- **Reviewer & Maintainer Leaderboard Dashboard** (`/dashboard`)
 
 ---
 
@@ -79,6 +79,6 @@ npm test
 # 2. Run Next.js 15 production build
 npm run web:build
 
-# 3. Run empirical research benchmark suite
+# 3. Run automated engine benchmark suite
 npm run experiment
 ```

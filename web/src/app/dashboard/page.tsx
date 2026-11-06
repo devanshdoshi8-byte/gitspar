@@ -260,13 +260,16 @@ export default function DashboardPage() {
         <div>
           <div className="inline-flex items-center gap-2 px-2.5 py-1 rounded-full bg-blue-500/10 border border-blue-500/20 text-blue-400 text-xs font-mono mb-2">
             <Activity className="w-3.5 h-3.5" />
-            Reviewer &amp; Hackathon Organizer Portal
+            Reviewer &amp; Maintainer Portal
           </div>
           <h1 className="text-3xl font-extrabold text-white tracking-tight">
             Comprehension Leaderboard &amp; Audit Log
           </h1>
           <p className="text-sm text-slate-400 mt-1">
             Real-time verification telemetry tracking developer comprehension drills and AI defect fixes.
+          </p>
+          <p className="text-xs text-slate-500 font-mono mt-1">
+            💡 Sample Repository Audit Log — Run <code className="text-blue-400">npx gitspar</code> locally to generate receipts for your own repo.
           </p>
         </div>
 
@@ -292,7 +295,7 @@ export default function DashboardPage() {
           <div className="text-3xl font-bold text-white font-mono">1,482</div>
           <div className="flex items-center gap-1.5 text-xs text-emerald-400 font-medium mt-2">
             <TrendingUp className="w-3.5 h-3.5" />
-            <span>+18.4% from last hackathon cohort</span>
+            <span>+18.4% verified PR volume</span>
           </div>
         </div>
 

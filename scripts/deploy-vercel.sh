@@ -17,7 +17,7 @@ echo "Step 2: Building Next.js 15 production bundle..."
 npm run build
 
 echo "Step 3: Deploying to Vercel Production via Vercel CLI..."
-npx vercel --prod --yes
+npx vercel --prod --yes --scope devanshdoshi8-7922s-projects
 
 echo "========================================================="
 echo " ✅ Deployment completed successfully!"

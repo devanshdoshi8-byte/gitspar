@@ -375,23 +375,25 @@ async function runBenchmark() {
   const avgLatencyA = Math.round(cohortAResults.reduce((sum, r) => sum + r.latencyMs, 0) / cohortAResults.length);
   const avgLatencyB = Math.round(cohortBResults.reduce((sum, r) => sum + r.latencyMs, 0) / cohortBResults.length);
 
-  const experimentResultsMd = `# GitSpar Empirical Research Benchmark Report: Diagnostic Mutation Verification
+  const experimentResultsMd = `# GitSpar Benchmark Suite: Automated Engine Verification
 
-**Publication Date:** November 2026  
-**Research Lead:** GitSpar Core Research Group  
+**Author:** Devansh Doshi  
 **Target Repository:** \`devanshdoshi8-byte/gitspar\`  
 **Engine Version:** v0.3.0  
-**Methodology:** Clean-Room Behavioral Oracle + AST Boundary Mutation Testing (ts-morph / Vitest)
+**Harness:** Automated Engine Verification Suite (\`scripts/run-experiment.ts\` across 5 reference TypeScript modules)  
+**Methodology:** Independent Behavioral Oracle + AST Boundary Mutation Testing (\`ts-morph\` / \`vitest\`)
 
 ---
 
-## 1. Executive Summary
+## 1. Overview & Verification Purpose
 
-As AI code generators (GitHub Copilot, Cursor, Claude 3.7 Sonnet) approach ubiquitous adoption, software teams face a crisis of **"cognitive debt"**: developers commit hundreds of lines of syntactically valid code without understanding subtle boundary conditions. Traditional gatekeeping mechanisms rely on static linters or conversational LLM quizzes—both of which can be gamed without genuine comprehension.
+This document records the automated engine verification benchmarks for **GitSpar**, evaluating its diagnostic gatekeeping capabilities across reference TypeScript feature modules.
 
-This benchmark evaluates **GitSpar**, an editor-agnostic diagnostic gatekeeper that introduces **executable mutation drills** and **cryptographic diff verification**. Across **10 autonomous empirical runs** spanning two distinct cohorts:
-- **Cohort A (Diagnostic Comprehension Drills):** Achieved **100% mutant kill rate** across all 5 production modules, validating that boundary inversions (e.g., \`>=\` to \`>\`) are deterministically caught by blind independent oracles.
-- **Cohort B (CI Gatekeeper Validations):** Achieved **100% enforcement fidelity**, accurately accepting valid cryptographic PR receipts (exit code 0) while cleanly intercepting tampered diff hashes, missing receipts, and unfinished repairs (exit code 1) with **0% false positives or false negatives**.
+*Note: These benchmarks measure automated engine execution metrics across simulated developer and CI scenarios executed via \`scripts/run-experiment.ts\`, validating deterministic mutant kill rates, CI exit code fidelity, and execution performance.*
+
+Across **10 automated benchmark runs** spanning two distinct test cohorts:
+- **Cohort A (Diagnostic Comprehension Drills):** Achieved **100% mutant kill rate** across all 5 reference modules, validating that boundary inversions (e.g., \`>=\` to \`>\`) are deterministically caught by independent oracles.
+- **Cohort B (CI Gatekeeper Validations):** Achieved **100% enforcement fidelity**, accurately accepting valid cryptographic PR receipts (exit code 0) while intercepting tampered diff hashes, missing receipts, and unfinished repairs (exit code 1) with **0% false positives or false negatives**.
 
 ---
 
@@ -488,11 +490,11 @@ npm run experiment
 \`\`\`
 `;
 
-  writeFileSync(resolve(cwd, 'EXPERIMENT_RESULTS.md'), experimentResultsMd, 'utf-8');
+  writeFileSync(resolve(cwd, 'BENCHMARKS.md'), experimentResultsMd, 'utf-8');
 
   console.log("\n═══════════════════════════════════════════════════════════════════");
   console.log(" Benchmark Execution Complete: 10/10 Runs Passed (100% Fidelity)");
-  console.log(" Generated Whitepaper: EXPERIMENT_RESULTS.md");
+  console.log(" Generated Benchmark Report: BENCHMARKS.md");
   console.log("═══════════════════════════════════════════════════════════════════\n");
 }
 

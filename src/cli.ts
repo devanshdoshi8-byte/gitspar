@@ -14,6 +14,7 @@ import { discoverEligibleFunctions, createBoundaryMutant, EligibleFunction, Muta
 import { runIsolatedVitestCheck } from './runner.js';
 import { saveReceipt, AssessmentReceipt } from './receipt.js';
 import { loadGitSparConfig } from './config.js';
+import { SaboteurAgent, SocraticEvaluatorAgent, TransferProbeAgent } from './agent.js';
 
 // ANSI styling helpers (Rule 5: Zero-conflict, no chalk/inquirer)
 const reset = '\x1b[0m';
@@ -396,6 +397,7 @@ export async function runCli(): Promise<void> {
     let mutationTest: 'failed' | 'not_applicable' = 'not_applicable';
     let diagnosedLine = 0;
     let explanation = '';
+    const agentReasoningTrace: string[] = [];
 
     if (!baselineResult.passed) {
       // -------------------------------------------------------------
@@ -442,27 +444,55 @@ export async function runCli(): Promise<void> {
         console.log(`${red}❌ Test still failing:${reset}\n${retryResult.rawOutput}\n`);
       }
 
+      const evaluator = new SocraticEvaluatorAgent();
       while (true) {
         explanation = (
           await prompt.question(
-            `\n${bold}In 1 sentence, explain the real defect you fixed (min 15 chars): ${reset}`
+            `\n${bold}In 1-2 sentences, explain the real defect you fixed: ${reset}`
           )
         ).trim();
-        if (explanation.length >= 15) {
+
+        const evalResult = await evaluator.evaluateExplanation({
+          explanation,
+          functionName: selectedFunction.functionName,
+          signature: selectedFunction.signature,
+          originalExpression: `Line ${diagnosedLine} defect repair`,
+          mutatedExpression: `Line ${diagnosedLine} defect repair`,
+          mutatedLine: diagnosedLine,
+          mutatedOperator: 'defect_fix',
+          oracleInput: inputResult.parsed,
+          oracleExpectedOutput: outputResult.parsed,
+          variableNames: selectedFunction.parameterNames,
+        });
+
+        if (evalResult.approved) {
+          console.log(`${green}✅ Socratic Evaluator Approved: ${evalResult.feedback ?? 'Diagnostic explanation confirmed.'}${reset}`);
+          agentReasoningTrace.push(`[SocraticEvaluator] Approved defect explanation with score ${evalResult.score}/100.`);
           break;
+        } else {
+          console.log(`\n${yellow}⚠️ Socratic Feedback (${evalResult.score}/100): ${evalResult.socraticPrompt ?? evalResult.reasoning}${reset}`);
         }
-        console.log(`${red}Explanation too short. Please provide at least 15 characters.${reset}`);
       }
     } else {
       // -------------------------------------------------------------
-      // MODE A: Mutation Drill (Controlled Fault Diagnosis)
+      // MODE A: Mutation Drill (Controlled Fault Diagnosis via SaboteurAgent)
       // -------------------------------------------------------------
       mode = 'mutation_drill';
       baselineTest = 'passed';
-      console.log(`\n${green}✅ Baseline passed! Generating controlled boundary mutation drill (Mode A)...${reset}`);
+      console.log(`\n${green}✅ Baseline passed! Invoking SaboteurAgent retry loop (Mode A)...${reset}`);
 
       const tempMutantPath = resolve(cwd, '.gitspar/temp/mutant.ts');
-      mutationMeta = createBoundaryMutant(selectedFunction.filePath, selectedFunction.functionName, tempMutantPath);
+      const saboteur = new SaboteurAgent(cwd);
+      const saboteurResult = await saboteur.findKillingMutant(
+        selectedFunction.filePath,
+        selectedFunction.functionName,
+        inputResult.raw,
+        outputResult.raw,
+        tempMutantPath
+      );
+
+      mutationMeta = saboteurResult.killingMutant;
+      agentReasoningTrace.push(...saboteurResult.agentTrace);
 
       // Verify that mutant fails with the user's input
       let mutantResult = runIsolatedVitestCheck(
@@ -545,17 +575,35 @@ export async function runCli(): Promise<void> {
         )
       ).trim();
 
-      // Prompt 3: Explanation
+      // Prompt 3: Explanation graded by SocraticEvaluatorAgent
+      const evaluator = new SocraticEvaluatorAgent();
       while (true) {
         explanation = (
           await prompt.question(
-            `\n${bold}In 1 sentence, explain why this boundary mutation caused your test input to fail: ${reset}`
+            `\n${bold}In 1-2 sentences, explain why this boundary mutation caused your test input to fail: ${reset}`
           )
         ).trim();
-        if (explanation.length >= 15) {
+
+        const evalResult = await evaluator.evaluateExplanation({
+          explanation,
+          functionName: selectedFunction.functionName,
+          signature: selectedFunction.signature,
+          originalExpression: mutationMeta.originalExpression,
+          mutatedExpression: mutationMeta.mutatedExpression,
+          mutatedLine: mutationMeta.mutatedLine,
+          mutatedOperator: mutationMeta.mutatedOperator,
+          oracleInput: inputResult.parsed,
+          oracleExpectedOutput: outputResult.parsed,
+          variableNames: selectedFunction.parameterNames,
+        });
+
+        if (evalResult.approved) {
+          console.log(`${green}✅ Socratic Evaluator Approved: ${evalResult.feedback ?? 'Diagnostic proof accepted.'}${reset}`);
+          agentReasoningTrace.push(`[SocraticEvaluator] Approved explanation with score ${evalResult.score}/100.`);
           break;
+        } else {
+          console.log(`\n${yellow}⚠️ Socratic Feedback (${evalResult.score}/100): ${evalResult.socraticPrompt ?? evalResult.reasoning}${reset}`);
         }
-        console.log(`${red}Explanation too short. Please provide at least 15 characters.${reset}`);
       }
 
       // Confirm original function still GREEN
@@ -569,6 +617,40 @@ export async function runCli(): Promise<void> {
 
       if (!finalCheck.passed) {
         throw new Error('Unmodified function failed final verification check.');
+      }
+    }
+
+    // -------------------------------------------------------------
+    // Transfer Probe Agent (Unseen Counterfactual Input Verification)
+    // -------------------------------------------------------------
+    console.log(`\n${bold}${magenta}====================================================================${reset}`);
+    console.log(`${bold}${magenta}TRANSFER PROBE: UNSEEN COUNTERFACTUAL BOUNDARY ASSESSMENT${reset}`);
+    console.log(`${bold}${magenta}====================================================================${reset}`);
+    const transferAgent = new TransferProbeAgent(cwd);
+    const probe = transferAgent.synthesizeProbe(inputResult.parsed, selectedFunction.functionName, selectedFunction.signature);
+    agentReasoningTrace.push(`[TransferProbeAgent] ${probe.reasoning}`);
+
+    let groundTruth: unknown = null;
+    try {
+      groundTruth = transferAgent.computeGroundTruth(selectedFunction.filePath, selectedFunction.functionName, probe.probeInput);
+    } catch {
+      // Continue gracefully if ground truth execution cannot run
+    }
+
+    let transferPassed = false;
+    let transferAnswer = '';
+    if (groundTruth !== null) {
+      console.log(`${dim}Transfer Probe synthesized: unseen input near boundary.${reset}`);
+      console.log(`\n${bold}Transfer Check: Without running the code, what will ${cyan}${selectedFunction.functionName}(${JSON.stringify(probe.probeInput).slice(1, -1)})${reset} return? ${reset}`);
+      transferAnswer = (await prompt.question(`Your expected return value: `)).trim();
+      transferPassed = transferAgent.evaluateUserAnswer(transferAnswer, groundTruth);
+
+      if (transferPassed) {
+        console.log(`${green}✅ Correct! Return value matches ground-truth (${JSON.stringify(groundTruth)}). Generalization confirmed.${reset}`);
+        agentReasoningTrace.push(`[TransferProbeAgent] Developer correctly predicted unseen input: ${transferAnswer} == ${JSON.stringify(groundTruth)}`);
+      } else {
+        console.log(`${yellow}⚠️ Transfer prediction mismatch. Expected ${JSON.stringify(groundTruth)}, got "${transferAnswer}".${reset}`);
+        agentReasoningTrace.push(`[TransferProbeAgent] Prediction mismatch: expected ${JSON.stringify(groundTruth)}, got "${transferAnswer}"`);
       }
     }
 
@@ -598,6 +680,11 @@ export async function runCli(): Promise<void> {
       repair_test: 'passed',
       diagnosed_line: diagnosedLine,
       explanation,
+      transfer_check_input: groundTruth !== null ? probe.probeInput : undefined,
+      transfer_check_expected: groundTruth !== null ? groundTruth : undefined,
+      transfer_check_user_answer: groundTruth !== null ? transferAnswer : undefined,
+      transfer_check_passed: groundTruth !== null ? transferPassed : undefined,
+      agent_reasoning_trace: agentReasoningTrace,
     };
 
     const saved = saveReceipt(receipt);

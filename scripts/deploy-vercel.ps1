@@ -15,7 +15,7 @@ Write-Host "Step 2: Building Next.js 15 production bundle..." -ForegroundColor Y
 npm run build
 
 Write-Host "Step 3: Deploying to Vercel Production via Vercel CLI..." -ForegroundColor Yellow
-npx vercel --prod --yes
+npx vercel --prod --yes --scope devanshdoshi8-7922s-projects
 
 Write-Host "=========================================================" -ForegroundColor Green
 Write-Host " ✅ Deployment completed successfully!" -ForegroundColor Green

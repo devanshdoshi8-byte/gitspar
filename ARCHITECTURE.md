@@ -1,72 +1,91 @@
-# DiffProof (v0.1) — Architecture Specification & Engineering Rules
+# GitSpar — Technical Architecture & System Design
 
-## 1. Product Vision & The Core Problem We Solve
-In 2026, AI coding agents (Antigravity, Cursor, Claude Code, Codex, Windsurf) allow developers, students, and open-source contributors to generate hundreds of lines of working code in minutes ("vibe coding").
-However, this created a massive second-order crisis:
-1. **Cognitive Debt:** Builders accept large AI-generated diffs without understanding the underlying control flow, boundary conditions, or failure modes.
-2. **The Reviewer Trust Gap:** Hackathon judges, university CS instructors, coding bootcamps, and open-source maintainers are overwhelmed by AI-generated submissions and pull requests where the human author cannot explain or debug the code they submitted.
-
-**What DiffProof Is:**
-DiffProof is a local, editor-agnostic engineering assessment CLI (`npx diffproof`) and GitHub Pull Request verification system. Instead of testing developers on random pre-made interview puzzles (like PraxisAI, Codritium, or Recticode) or only verifying software behavior against YAML contracts without checking human comprehension (like MaruCheck), DiffProof uses the developer's **own recent working-tree Git changes** to create a controlled, executable **Verified Change Understanding** assessment.
-
-DiffProof does NOT claim to prove 100% codebase ownership, does NOT claim to detect every security vulnerability, and does NOT pretend to block external AI windows locally. It records verifiable evidence of what specific code change the developer diagnosed, repaired, and explained against an independent behavioral test.
+**Author:** Devansh Doshi  
+**System:** GitSpar (`gitspar`) — Verified Change Understanding Engine  
+**Runtime:** Node.js (>=20), TypeScript (ESM / NodeNext)
 
 ---
 
-## 2. Five Non-Negotiable Engineering & Scientific Rules
+## 1. Architectural Philosophy & The Core Problem
 
-### RULE 1: Solve the Test Oracle Problem (Never Trust Implementation-Derived Tests)
-If an AI writes `function calculateDiscount(price) { return price * 0.8 }` when the business requirement was a 10% discount (`0.9`), an automated tool that inspects the code and generates `expect(calculateDiscount(100)).toBe(80)` merely validates the bug against itself.
-- **Architectural Requirement:** DiffProof MUST establish an **Independent Behavioral Oracle** BEFORE running the implementation:
-  1. Either use an existing, independently written test file, OR
-  2. Run a **Blind Human Oracle Prompt**: Show the developer ONLY the exported function's name, parameter names/types, and return type (hiding the implementation body) and require the developer to specify the expected return value for a boundary input (e.g., input `[100, false]` -> expected output `90`).
+When engineers use AI assistants (Antigravity, Cursor, Claude Code, GitHub Copilot), code generation velocity often outpaces human comprehension. Pull requests frequently introduce subtle boundary errors and off-by-one regressions that pass superficial inspection.
 
-### RULE 2: Strict Separation of Mode A (`mutation_drill`) vs. Mode B (`real_defect`)
-Once the developer specifies the independent oracle assertion, DiffProof runs Vitest against the **unmodified function**:
-- **MODE B (`real_defect` — Genuine Defect Discovery):**
-  If the unmodified function FAILS the developer's stated oracle expectation (`RED`), there is already a real mismatch between the developer's mental model/requirement and the code in their working tree. Do NOT inject an artificial bug. Route the developer into `real_defect` mode: show the failing test output and line-numbered function, have them fix their actual code until the oracle passes (`GREEN`), and record their explanation of the real defect.
-- **MODE A (`mutation_drill` — Controlled Fault Diagnosis):**
-  If the unmodified function PASSES the developer's stated oracle expectation (`GREEN`), create a disposable copy of the file in `.diffproof/temp/` and apply **one deterministic AST boundary mutation** (flipping `<`, `<=`, `>`, `>=`, `===`, `!==`) so that the developer's boundary test now FAILS (`RED` — killing the mutant). Ask the developer to:
-  1. Pinpoint the exact line number where the boundary condition is broken.
-  2. Identify the correct operator/condition to restore `GREEN`.
-  3. Write a concise root-cause explanation of why that boundary mutation caused their test input to fail.
-*Never mix Mode A and Mode B scores or receipts—they prove different things.*
+Traditional automated testing tools face the classical **Test Oracle Problem**: if a tool inspects an AI-generated function and synthesizes tests to match the implementation, it simply verifies the bug against itself. If an implementation returns `price * 0.8` instead of the required 10% discount (`price * 0.9`), auto-generated assertions codify the erroneous behavior.
 
-### RULE 3: Source Isolation vs. Runtime Isolation (Strict v0.1 Function Filtering)
-Git worktrees or temporary file copies only isolate tracked source files—they do NOT isolate `.env` secrets, `node_modules`, databases, or network ports, and importing arbitrary files can trigger top-level side effects.
-- **Architectural Requirement for v0.1:**
-  - Use `ts-morph` to statically inspect changed TypeScript files and list **only exported, self-contained, deterministic functions** (functions taking primitive/plain-object parameters that contain at least one relational/equality operator and do NOT call `fetch`, `process.env`, file I/O, or database clients).
-  - Explicitly mark impure route handlers or database-dependent functions as unsupported in v0.1 rather than pretending to mock them automatically.
-  - Always require **manual function selection** and **explicit user approval** in the CLI before executing any code in Vitest.
-
-### RULE 4: Accurate Git Working-Tree Fingerprinting
-A `git diff` cannot distinguish which lines were typed by an AI vs. a human, and uncommitted working-tree edits do not have their own commit SHA yet.
-- **Architectural Requirement:**
-  - Discover both tracked working-tree modifications (`git diff HEAD --name-only`) and untracked `.ts` files (`git ls-files --others --exclude-standard`).
-  - Every receipt must record both `base_commit_sha` (`git rev-parse HEAD`) AND `working_diff_sha256` (a SHA-256 hash of `git diff HEAD` plus the contents of any untracked target files) so the exact assessed state is cryptographically fingerprinted.
-
-### RULE 5: Zero-Conflict Local Stack & Two-Phase Product Roadmap
-- **Phase 1 (Our 2-Week MVP — Local CLI Engine):**
-  - Built in TypeScript (`NodeNext` ESM) using `tsx`, `ts-morph` (for AST inspection and boundary mutation), `vitest` (for isolated test execution), and Node's built-in `node:readline/promises` + ANSI escape codes (avoiding `inquirer` or `chalk` ESM/CommonJS conflicts).
-  - Outputs `.diffproof/receipt.json` and a human-readable `.diffproof/PR_RECEIPT.md` table for GitHub Pull Requests, hackathon submissions, and CS coursework.
-- **Phase 2 (Next Milestone — "Cursor-Proof" Clean-Room GitHub PR Gatekeeper):**
-  - A GitHub Action + lightweight web check that reads the PR diff and challenges the contributor in a clean browser view outside their IDE (so an IDE sidebar agent cannot autocomplete the diagnosis for them), posting a verified status check on the Pull Request.
+GitSpar addresses this through a **Neuro-Symbolic Verification Loop**:
+1. Ground truth behavior is established *independently* from the code implementation (Blind Specification).
+2. Code understanding is verified through controlled fault diagnosis, Socratic explanation grading, and counterfactual transfer probing.
+3. Every verification generates a cryptographically signed receipt bound to the author's Git diff SHA-256 fingerprint.
 
 ---
 
-## 3. Planned Repository Structure for Phase 1 (v0.1 CLI)
+## 2. Core Subsystems
 
+```mermaid
+flowchart TD
+    subgraph Engine ["GitSpar Core Engine"]
+        A["Git Working-Tree Scanner"] --> B["AST Discovery & Candidate Ranking"]
+        B --> C["Independent Behavioral Oracle"]
+        C --> D{"Baseline Execution (Unmodified)"}
+        D -->|"FAILS (RED)"| E["Mode B: Real Defect Discovery"]
+        D -->|"PASSES (GREEN)"| F["SaboteurAgent Retry Loop (Mode A)"]
+        F --> G["Interactive Diagnostic Drill"]
+        E --> H["Developer Fixes Working Tree"]
+        G --> I["SocraticEvaluatorAgent"]
+        H --> I
+        I --> J["TransferProbeAgent (Unseen Counterfactual)"]
+        J --> K["Signed Receipt (.gitspar/receipt.json)"]
+    end
+    K --> L["CI Gatekeeper Mode (npx gitspar --ci)"]
 ```
-diffproof/
-├── ARCHITECTURE.md           # This master specification
-├── package.json              # ts-morph, vitest, tsx, typescript
-├── tsconfig.json             # NodeNext ESM configuration
-├── src/
-│   ├── git.ts                # Discovers tracked/untracked changes & computes base_commit_sha + working_diff_sha256
-│   ├── ast.ts                # Uses ts-morph to filter pure exported functions, extract blind signatures, and apply boundary mutations
-│   ├── runner.ts             # Generates temporary Vitest spec for the user's independent oracle and executes Vitest
-│   ├── receipt.ts            # Writes .diffproof/receipt.json and .diffproof/PR_RECEIPT.md
-│   └── cli.ts                # Interactive terminal workflow orchestrating Blind Oracle -> Mode A / Mode B -> Receipt
-└── examples/
-    └── checkoutDiscount.ts   # Realistic e-commerce discount function for end-to-end testing
-```
+
+### A. AST Static Analysis (`src/ast.ts`)
+Using `ts-morph` and the TypeScript compiler API, GitSpar scans changed files in the working directory:
+- **Function Discovery:** Identifies pure, deterministic exported functions with relational, equality, or boundary expressions. Filters out impure side-effectful functions (database clients, direct network calls, `process.env`).
+- **Mutation Candidate Ranking:** Discovers all comparison operators (`>=`, `>`, `<=`, `<`, `===`, `!==`, `==`, `!=`) and arithmetic operators. Assigns a complexity score prioritizing boundary relational operators over simple equality checks.
+
+### B. The 3-Stage Agentic Verification Loop (`src/agent.ts`)
+Rather than relying on single-pass heuristics, GitSpar executes a multi-step agentic cycle:
+
+1. **`SaboteurAgent` (Autonomous Mutant-Kill Retry Loop):**
+   - Automatically iterates through ranked mutation candidates in an autonomous tool-use loop.
+   - For each candidate, injects an AST mutation into a sandboxed copy, executes an isolated test run, and checks whether the author's oracle assertion turns `RED` (mutant killed) or stays `GREEN` (mutant survived).
+   - Backtracks through candidates and records an explicit reasoning trace (`agent_reasoning_trace`) until finding a mutation that deterministically tests the boundary.
+
+2. **`SocraticEvaluatorAgent` (Explanation Verification & Feedback):**
+   - Evaluates the author's written diagnosis against:
+     - Mutated variable and parameter identifiers from the AST.
+     - The original vs. mutated operator and boundary values.
+     - Causal reasoning mechanisms (`because`, `caused`, `when`, `due to`, `evaluated`, `instead of`).
+   - If `GEMINI_API_KEY` is present in the environment, optionally queries Gemini 2.5 Flash via native `fetch` for conceptual accuracy grading.
+   - Rejects trivial responses (`"I fixed the bug"`) and generates targeted Socratic feedback prompts guiding the author to articulate the boundary mechanism.
+
+3. **`TransferProbeAgent` (Unseen Counterfactual Input Verification):**
+   - Once a mutation is diagnosed or repaired, synthesizes an unseen test vector near the boundary (shifting numeric boundary values by $+1/-1$ or toggling boolean parameters).
+   - Obtains ground-truth return values from the unmodified code.
+   - Challenges the author to predict the return value without running the code, confirming that mental model comprehension generalizes beyond the specific test input.
+
+### C. Cryptographic Diff Fingerprinting (`src/git.ts`)
+Git working trees represent uncommitted state without an immutable commit hash. GitSpar computes:
+- `base_commit_sha`: The latest local commit (`git rev-parse HEAD`).
+- `working_diff_sha256`: A SHA-256 hash computed over `git diff HEAD` concatenated with any untracked target files.
+Any modification made to the code after completing the drill invalidates the diff fingerprint, preventing replay attacks or subsequent unverified edits.
+
+### D. CI Gatekeeper (`src/cli.ts --ci`)
+Designed for automated PR pipelines (GitHub Actions):
+- Resolves the comparison base ref (`git merge-base origin/main HEAD` or local branch base).
+- Recomputes candidate diff hashes across the pull request.
+- Reads `.gitspar/receipt.json`. If the diff SHA matches the verified receipt and all stages passed, exits with status `0`.
+- If unverified changes exist or the receipt is missing, exits with status `1` and prints actionable instructions for local verification.
+
+---
+
+## 3. Technology Stack & Design Decisions
+
+| Component | Technology | Rationale |
+| :--- | :--- | :--- |
+| **AST Parser** | `ts-morph` | High-level TypeScript AST manipulation with source-file round-tripping. |
+| **Test Runner** | `vitest` | Fast, isolated TypeScript execution with native ESM support. |
+| **Agentic Loop** | Native Node.js + Optional Gemini 2.5 Flash | Zero external runtime dependencies; operates 100% offline out-of-the-box. |
+| **CLI I/O** | `node:readline` | Zero-dependency terminal interface avoiding ESM/CJS terminal conflicts. |
+| **Web Portal** | Next.js 15, Tailwind CSS, React 19 | Serverless API route (`/api/spar`) with sandboxed `node:vm` execution. |

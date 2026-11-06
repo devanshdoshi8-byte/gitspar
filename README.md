@@ -14,7 +14,7 @@
 - **Live Interactive Mutation Simulator:** [https://web-lovat-pi-62.vercel.app/demo](https://web-lovat-pi-62.vercel.app/demo)
 - **Reviewer & Hackathon Leaderboard:** [https://web-lovat-pi-62.vercel.app/dashboard](https://web-lovat-pi-62.vercel.app/dashboard)
 - **Clean-Room Verification Portal:** [https://web-lovat-pi-62.vercel.app/verify/PR-1082](https://web-lovat-pi-62.vercel.app/verify/PR-1082)
-- **Empirical Research Benchmark Report:** [EXPERIMENT_RESULTS.md](EXPERIMENT_RESULTS.md) (100% mutant kill rate & CI enforcement).
+- **Automated Engine Benchmarks:** [BENCHMARKS.md](BENCHMARKS.md) (100% mutant kill rate & CI enforcement).
 - **Vercel Deployment Guide:** [DEPLOYMENT.md](DEPLOYMENT.md).
 
 ---

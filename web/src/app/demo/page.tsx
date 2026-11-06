@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import Link from "next/link";
 import {
   Shield,
@@ -19,6 +19,9 @@ import {
   FileCheck,
   EyeOff,
   Cpu,
+  Sparkles,
+  HelpCircle,
+  CheckCheck,
 } from "lucide-react";
 
 interface SamplePreset {
@@ -27,154 +30,312 @@ interface SamplePreset {
   signature: string;
   defaultArgs: string;
   defaultExpected: string;
-  mutatedLine: number;
-  originalCode: string[];
-  mutatedCode: string[];
-  originalOp: string;
-  mutatedOp: string;
-  explanationHint: string;
+  code: string;
 }
 
-const SAMPLES: SamplePreset[] = [
+const PRESETS: SamplePreset[] = [
   {
     name: "calculateTierDiscount",
     file: "examples/checkoutDiscount.ts",
     signature: "calculateTierDiscount(orderTotal: number, isStudent: boolean): number",
     defaultArgs: "100, false",
     defaultExpected: "90",
-    mutatedLine: 2,
-    originalCode: [
-      "export function calculateTierDiscount(orderTotal: number, isStudent: boolean): number {",
-      "  if (orderTotal >= 100) {",
-      "    return orderTotal * 0.9;",
-      "  }",
-      "  return isStudent ? orderTotal * 0.95 : orderTotal;",
-      "}",
-    ],
-    mutatedCode: [
-      "export function calculateTierDiscount(orderTotal: number, isStudent: boolean): number {",
-      "  if (orderTotal > 100) { /* MUTATED OPERATOR: >= became > */",
-      "    return orderTotal * 0.9;",
-      "  }",
-      "  return isStudent ? orderTotal * 0.95 : orderTotal;",
-      "}",
-    ],
-    originalOp: ">=",
-    mutatedOp: ">",
-    explanationHint: "Boundary condition flipped from >= to > so orderTotal 100 was not discounted",
+    code: `export function calculateTierDiscount(orderTotal: number, isStudent: boolean): number {
+  if (orderTotal >= 100) {
+    if (isStudent) {
+      return orderTotal * 0.8;
+    }
+    return orderTotal * 0.9;
+  }
+  return isStudent ? orderTotal * 0.95 : orderTotal;
+}`,
   },
   {
     name: "isSessionValid",
     file: "src/authSession.ts",
-    signature: "isSessionValid(now: number, expiresAt: number): boolean",
+    signature: "isSessionValid(tokenAgeMs: number, maxLifetimeMs: number): boolean",
     defaultArgs: "1000, 1000",
-    defaultExpected: "false",
-    mutatedLine: 2,
-    originalCode: [
-      "export function isSessionValid(now: number, expiresAt: number): boolean {",
-      "  if (now >= expiresAt) {",
-      "    return false;",
-      "  }",
-      "  return true;",
-      "}",
-    ],
-    mutatedCode: [
-      "export function isSessionValid(now: number, expiresAt: number): boolean {",
-      "  if (now > expiresAt) { /* MUTATED OPERATOR: >= became > */",
-      "    return false;",
-      "  }",
-      "  return true;",
-      "}",
-    ],
-    originalOp: ">=",
-    mutatedOp: ">",
-    explanationHint: "Expired token at exact timestamp now === expiresAt was treated as still valid",
+    defaultExpected: "true",
+    code: `export function isSessionValid(tokenAgeMs: number, maxLifetimeMs: number): boolean {
+  if (tokenAgeMs <= maxLifetimeMs) {
+    return true;
+  }
+  return false;
+}`,
+  },
+  {
+    name: "checkRateLimit",
+    file: "src/rateLimiter.ts",
+    signature: "checkRateLimit(requestCount: number, maxLimit: number): boolean",
+    defaultArgs: "100, 100",
+    defaultExpected: "true",
+    code: `export function checkRateLimit(requestCount: number, maxLimit: number): boolean {
+  if (requestCount <= maxLimit) {
+    return true;
+  }
+  return false;
+}`,
   },
 ];
 
 export default function DemoPage() {
-  const [selectedSampleIndex, setSelectedSampleIndex] = useState(0);
-  const sample = SAMPLES[selectedSampleIndex];
+  const [activeTab, setActiveTab] = useState<number>(0);
+  const [isCustomMode, setIsCustomMode] = useState<boolean>(false);
+  const [customCode, setCustomCode] = useState<string>(PRESETS[0].code);
 
-  // Steps: 1 = Blind Oracle, 2 = Baseline Check, 3 = Mutation Red, 4 = Repair, 5 = Receipt
+  const currentCode = isCustomMode ? customCode : PRESETS[activeTab].code;
+  const currentSample = PRESETS[activeTab];
+
+  // Steps: 1 = Blind Specification, 2 = Baseline Check, 3 = Saboteur Drill, 4 = Socratic Explanation & Transfer Probe, 5 = Cryptographic Receipt
   const [step, setStep] = useState<1 | 2 | 3 | 4 | 5>(1);
-  const [argsInput, setArgsInput] = useState(sample.defaultArgs);
-  const [expectedInput, setExpectedInput] = useState(sample.defaultExpected);
-  const [isExecuting, setIsExecuting] = useState(false);
+  const [argsInput, setArgsInput] = useState<string>(currentSample.defaultArgs);
+  const [expectedInput, setExpectedInput] = useState<string>(currentSample.defaultExpected);
+  const [isExecuting, setIsExecuting] = useState<boolean>(false);
+  const [apiError, setApiError] = useState<string | null>(null);
 
-  // Diagnosis & repair state
+  // Server response state
+  const [serverData, setServerData] = useState<{
+    activeFnName?: string;
+    baselinePassed?: boolean;
+    baselineOutput?: unknown;
+    mutantKilled?: boolean;
+    mutantActualOutput?: unknown;
+    candidate?: {
+      line: number;
+      originalOperator: string;
+      mutatedOperator: string;
+      originalText: string;
+      mutatedText: string;
+    };
+    mutatedCode?: string;
+    agentTrace?: string[];
+    socraticEvaluation?: {
+      approved: boolean;
+      score: number;
+      socraticPrompt?: string;
+      feedback?: string;
+    };
+    transferProbe?: {
+      probeInput: unknown[];
+      groundTruth: unknown;
+      transferCheckPassed?: boolean;
+    };
+    receipt?: {
+      timestamp: string;
+      working_diff_sha256: string;
+      function_name: string;
+      oracle_input: unknown[];
+      oracle_expected_output: unknown;
+      mutated_line: number;
+      mutated_operator: string;
+      transfer_check_passed?: boolean;
+    };
+  } | null>(null);
+
+  // Interactive drill state
   const [selectedLine, setSelectedLine] = useState<number | null>(null);
   const [selectedOperator, setSelectedOperator] = useState<string>(">");
-  const [diagnosticExplanation, setDiagnosticExplanation] = useState("");
+  const [diagnosticExplanation, setDiagnosticExplanation] = useState<string>("");
+  const [transferAnswer, setTransferAnswer] = useState<string>("");
+  const [transferVerified, setTransferVerified] = useState<boolean | null>(null);
   const [repairError, setRepairError] = useState<string | null>(null);
-  const [copiedReceipt, setCopiedReceipt] = useState(false);
+  const [copiedReceipt, setCopiedReceipt] = useState<boolean>(false);
 
-  // Reset when sample changes
-  const switchSample = (index: number) => {
-    setSelectedSampleIndex(index);
-    const nextSample = SAMPLES[index];
-    setArgsInput(nextSample.defaultArgs);
-    setExpectedInput(nextSample.defaultExpected);
+  const switchPreset = (index: number) => {
+    setActiveTab(index);
+    setIsCustomMode(false);
+    const p = PRESETS[index];
+    setCustomCode(p.code);
+    setArgsInput(p.defaultArgs);
+    setExpectedInput(p.defaultExpected);
+    resetDrill();
+  };
+
+  const resetDrill = () => {
     setStep(1);
     setSelectedLine(null);
     setSelectedOperator(">");
     setDiagnosticExplanation("");
+    setTransferAnswer("");
+    setTransferVerified(null);
     setRepairError(null);
+    setServerData(null);
+    setApiError(null);
   };
 
-  const handleRunBaseline = () => {
+  // 1. Run Baseline Test & Saboteur Loop on Server
+  const handleExecuteBaselineAndSaboteur = async () => {
     setIsExecuting(true);
-    setTimeout(() => {
+    setApiError(null);
+
+    try {
+      const res = await fetch("/api/spar", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          code: currentCode,
+          oracleArgs: argsInput,
+          expectedOutput: expectedInput,
+        }),
+      });
+
+      const data = await res.json();
+      if (!res.ok) {
+        setApiError(data.error || "Failed to execute function on server.");
+        setIsExecuting(false);
+        return;
+      }
+
+      setServerData(data);
+      if (data.baselinePassed) {
+        setStep(2);
+      } else {
+        setApiError("Baseline failed. The unmodified code does not produce the expected output.");
+      }
+    } catch (err: unknown) {
+      setApiError(`Network or execution error: ${(err as Error).message}`);
+    } finally {
       setIsExecuting(false);
-      setStep(2);
-    }, 700);
+    }
   };
 
-  const handleProceedToMutation = () => {
-    setIsExecuting(true);
-    setTimeout(() => {
-      setIsExecuting(false);
-      setStep(3);
-    }, 800);
+  const handleProceedToDrill = () => {
+    setStep(3);
   };
 
-  const handleValidateRepair = () => {
+  // 2. Validate Diagnosis & Submit to Socratic Evaluator
+  const handleSubmitDiagnosis = async () => {
     setRepairError(null);
     if (!selectedLine) {
-      setRepairError("Please click on the faulty line in the code editor above.");
+      setRepairError("Please select the mutated line in the code viewer above.");
       return;
     }
-    if (selectedLine !== sample.mutatedLine) {
-      setRepairError(`Line ${selectedLine} is not the mutated defect. Look for the boundary comparison.`);
+
+    if (serverData?.candidate && selectedLine !== serverData.candidate.line) {
+      setRepairError(`Line ${selectedLine} is not the defect. Inspect the boundary relational condition.`);
       return;
     }
-    if (selectedOperator !== sample.originalOp) {
-      setRepairError(`Incorrect operator '${selectedOperator}'. The code originally tested inclusive boundary.`);
+
+    if (serverData?.candidate && selectedOperator !== serverData.candidate.originalOperator) {
+      setRepairError(
+        `Operator '${selectedOperator}' is incorrect. The original boundary required '${serverData.candidate.originalOperator}'.`
+      );
       return;
     }
+
     if (!diagnosticExplanation.trim() || diagnosticExplanation.length < 10) {
-      setRepairError("Please write at least a 1-sentence diagnostic explanation explaining the defect.");
+      setRepairError("Please provide an explanation of how the boundary mutation caused the oracle test to fail.");
       return;
     }
 
     setIsExecuting(true);
-    setTimeout(() => {
+    try {
+      const res = await fetch("/api/spar", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          code: currentCode,
+          oracleArgs: argsInput,
+          expectedOutput: expectedInput,
+          userExplanation: diagnosticExplanation,
+          transferAnswer: transferAnswer.trim() || undefined,
+        }),
+      });
+
+      const data = await res.json();
+      if (!res.ok) {
+        setRepairError(data.error || "Evaluation failed.");
+        setIsExecuting(false);
+        return;
+      }
+
+      setServerData((prev) => ({
+        ...prev,
+        ...data,
+      }));
+
+      if (data.socraticEvaluation && !data.socraticEvaluation.approved) {
+        setRepairError(data.socraticEvaluation.socraticPrompt || "Please refine your explanation with causal boundary reasoning.");
+        setIsExecuting(false);
+        return;
+      }
+
+      setStep(4);
+    } catch (err: unknown) {
+      setRepairError(`Evaluation error: ${(err as Error).message}`);
+    } finally {
       setIsExecuting(false);
-      setStep(5);
-    }, 700);
+    }
   };
 
-  const generatedSha = "7f9a2b8e4c1d6e3f5a0b9c8d7e6f5a4b3c2d1e0f8a9b7c6d5e4f3a2b1c0d9e8f";
-  const baseSha = "a1b2c3d4e5f67890123456789abcdef012345678";
+  // 3. Verify Transfer Probe & Complete Assessment
+  const handleVerifyTransfer = async () => {
+    if (!transferAnswer.trim()) {
+      setRepairError("Please enter your expected return value for the unseen transfer input.");
+      return;
+    }
+
+    setIsExecuting(true);
+    setRepairError(null);
+
+    try {
+      const res = await fetch("/api/spar", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          code: currentCode,
+          oracleArgs: argsInput,
+          expectedOutput: expectedInput,
+          userExplanation: diagnosticExplanation,
+          transferAnswer: transferAnswer.trim(),
+        }),
+      });
+
+      const data = await res.json();
+      setServerData((prev) => ({ ...prev, ...data }));
+
+      const passed = Boolean(data.transferProbe?.transferCheckPassed);
+      setTransferVerified(passed);
+
+      if (passed) {
+        setTimeout(() => {
+          setStep(5);
+        }, 600);
+      } else {
+        setRepairError(
+          `Prediction mismatch! Expected ${JSON.stringify(
+            data.transferProbe?.groundTruth
+          )}, but received "${transferAnswer}". Verify the boundary branch logic.`
+        );
+      }
+    } catch (err: unknown) {
+      setRepairError(`Transfer check error: ${(err as Error).message}`);
+    } finally {
+      setIsExecuting(false);
+    }
+  };
+
+  const receiptJson = serverData?.receipt
+    ? JSON.stringify(
+        {
+          version: "0.3.0",
+          ...serverData.receipt,
+          agent_reasoning_trace: serverData.agentTrace,
+          transfer_probe: serverData.transferProbe,
+        },
+        null,
+        2
+      )
+    : "";
 
   const receiptMarkdown = `<!-- GITSPAR_RECEIPT_START -->
-## 🛡️ GitSpar Comprehension Receipt
-- **Target Function:** \`${sample.name}\` (\`${sample.file}\`)
-- **Assessment Mode:** \`mutation_drill\` (Clean-Room Boundary Verification)
-- **Base Commit:** \`${baseSha}\`
-- **Working Tree Diff SHA-256:** \`${generatedSha}\`
-- **Diagnosed Line:** Line ${sample.mutatedLine}
-- **Operator Restored:** \`${sample.originalOp}\` (mutated from \`${sample.mutatedOp}\`)
+## 🛡️ GitSpar Verified Change Understanding Receipt
+- **Target Function:** \`${serverData?.receipt?.function_name || currentSample.name}\`
+- **Assessment Mode:** \`mutation_drill\` (Autonomous Saboteur Verification)
+- **Working Diff SHA-256:** \`${serverData?.receipt?.working_diff_sha256 || "e3b0c442..."}\`
+- **Diagnosed Line:** Line ${serverData?.receipt?.mutated_line || 2}
+- **Mutant Operator Restored:** \`${serverData?.candidate?.originalOperator || ">="}\` (mutated to \`${serverData?.candidate?.mutatedOperator || ">"}\`)
+- **Transfer Probe Generalization:** ${serverData?.transferProbe?.transferCheckPassed ? "✅ Passed (Verified Unseen Input)" : "⚠️ Skipped"}
 - **Diagnostic Proof:** "${diagnosticExplanation}"
 - **Status:** ✅ VERIFIED COMPREHENSION
 <!-- GITSPAR_RECEIPT_END -->`;
@@ -185,26 +346,12 @@ export default function DemoPage() {
     setTimeout(() => setCopiedReceipt(false), 2000);
   };
 
-  const downloadReceiptJson = () => {
-    const data = {
-      version: "0.3.0",
-      timestamp: new Date().toISOString(),
-      baseCommitSha: baseSha,
-      workingDiffSha256: generatedSha,
-      assessedFunction: sample.name,
-      filePath: sample.file,
-      assessmentMode: "mutation_drill",
-      mutatedLine: sample.mutatedLine,
-      originalOperator: sample.originalOp,
-      mutatedOperator: sample.mutatedOp,
-      diagnosticProof: diagnosticExplanation,
-      passed: true,
-    };
-    const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
+  const downloadReceipt = () => {
+    const blob = new Blob([receiptJson], { type: "application/json" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = "receipt.json";
+    a.download = `gitspar-receipt-${serverData?.receipt?.function_name || "drill"}.json`;
     a.click();
     URL.revokeObjectURL(url);
   };
@@ -215,518 +362,493 @@ export default function DemoPage() {
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-6 border-b border-slate-800">
         <div>
           <div className="inline-flex items-center gap-2 px-2.5 py-1 rounded-full bg-blue-500/10 border border-blue-500/20 text-blue-400 text-xs font-mono mb-2">
-            <Cpu className="w-3.5 h-3.5" />
-            Clean-Room Verification Sandbox
+            <Cpu className="w-3.5 h-3.5 text-blue-400" />
+            Live Backend Engine (`/api/spar`)
           </div>
           <h1 className="text-2xl sm:text-3xl font-extrabold text-white tracking-tight">
-            Live GitSpar Mutation Simulator
+            GitSpar Agentic Mutation Simulator
           </h1>
           <p className="text-sm text-slate-400 mt-1">
-            Experience the complete 4-step diagnostic verification loop directly in your browser.
+            Test any TypeScript function against the autonomous Saboteur loop, Socratic evaluator, and counterfactual transfer check.
           </p>
         </div>
 
-        {/* Preset Selector */}
-        <div className="flex items-center gap-2 bg-slate-900 p-1 rounded-xl border border-slate-800">
-          {SAMPLES.map((s, idx) => (
+        {/* Preset Selector & Custom Mode Toggle */}
+        <div className="flex flex-wrap items-center gap-2 bg-slate-900 p-1.5 rounded-xl border border-slate-800">
+          {PRESETS.map((p, idx) => (
             <button
-              key={s.name}
-              onClick={() => switchSample(idx)}
+              key={p.name}
+              onClick={() => switchPreset(idx)}
               className={`px-3 py-1.5 rounded-lg text-xs font-mono font-medium transition-all ${
-                selectedSampleIndex === idx
+                !isCustomMode && activeTab === idx
                   ? "bg-blue-600 text-white shadow-sm"
                   : "text-slate-400 hover:text-white"
               }`}
             >
-              {s.name}
+              {p.name}
             </button>
           ))}
+          <button
+            onClick={() => {
+              setIsCustomMode(true);
+              resetDrill();
+            }}
+            className={`px-3 py-1.5 rounded-lg text-xs font-mono font-medium transition-all ${
+              isCustomMode
+                ? "bg-indigo-600 text-white shadow-sm"
+                : "text-slate-400 hover:text-white"
+            }`}
+          >
+            ✏️ Custom Code
+          </button>
         </div>
       </div>
 
       {/* Progress Stepper */}
       <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 my-8">
         {[
-          { num: 1, label: "Blind Oracle", icon: EyeOff },
-          { num: 2, label: "Baseline Run", icon: CheckCircle2 },
-          { num: 3, label: "Mutation Drill", icon: Flame },
-          { num: 4, label: "Diagnose & Fix", icon: Code2 },
-          { num: 5, label: "PR Receipt", icon: FileCheck },
-        ].map((s) => {
-          const Icon = s.icon;
-          const isActive = step === s.num;
-          const isDone = step > s.num;
-          return (
+          { num: 1, label: "Blind Specification", icon: EyeOff },
+          { num: 2, label: "Baseline Check", icon: CheckCircle2 },
+          { num: 3, label: "Saboteur Drill", icon: Flame },
+          { num: 4, label: "Socratic & Transfer", icon: Sparkles },
+          { num: 5, label: "Signed Receipt", icon: FileCheck },
+        ].map(({ num, label, icon: Icon }) => (
+          <div
+            key={num}
+            className={`flex items-center gap-3 p-3 rounded-xl border transition-all ${
+              step === num
+                ? "border-blue-500/60 bg-blue-500/10 text-white shadow-sm"
+                : step > num
+                ? "border-emerald-500/30 bg-emerald-500/5 text-emerald-400"
+                : "border-slate-800/80 bg-slate-900/30 text-slate-500"
+            }`}
+          >
             <div
-              key={s.num}
-              className={`p-3 rounded-xl border transition-all flex items-center gap-2.5 ${
-                isActive
-                  ? "border-blue-500 bg-blue-950/40 text-blue-300 shadow-md shadow-blue-500/10"
-                  : isDone
-                  ? "border-emerald-500/40 bg-emerald-950/20 text-emerald-400"
-                  : "border-slate-800/80 bg-slate-900/40 text-slate-500"
+              className={`w-7 h-7 rounded-lg flex items-center justify-center font-mono text-xs font-bold ${
+                step === num
+                  ? "bg-blue-600 text-white"
+                  : step > num
+                  ? "bg-emerald-600/20 text-emerald-400 border border-emerald-500/30"
+                  : "bg-slate-800 text-slate-400"
               }`}
             >
-              <div
-                className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold font-mono ${
-                  isActive
-                    ? "bg-blue-600 text-white"
-                    : isDone
-                    ? "bg-emerald-600 text-white"
-                    : "bg-slate-800 text-slate-400"
-                }`}
-              >
-                {isDone ? <Check className="w-3.5 h-3.5" /> : s.num}
-              </div>
-              <div className="text-xs font-medium truncate">{s.label}</div>
+              {step > num ? <Check className="w-4 h-4" /> : num}
             </div>
-          );
-        })}
+            <div className="hidden sm:block">
+              <div className="text-xs font-medium leading-none">{label}</div>
+              <div className="text-[10px] text-slate-500 mt-0.5">
+                {step === num ? "Active" : step > num ? "Completed" : "Pending"}
+              </div>
+            </div>
+          </div>
+        ))}
       </div>
 
-      {/* Step Panels */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
-        {/* Left Interactive Playground */}
-        <div className="lg:col-span-7 space-y-6">
-          {/* STEP 1: BLIND ORACLE */}
-          {step === 1 && (
-            <div className="rounded-2xl border border-slate-800 bg-slate-900/60 p-6 space-y-5">
-              <div className="flex items-center gap-2.5 text-blue-400">
-                <EyeOff className="w-5 h-5" />
-                <h3 className="text-base font-bold text-white">Step 1: Blind Independent Oracle</h3>
-              </div>
-              <p className="text-xs text-slate-300 leading-relaxed">
-                The implementation body is intentionally hidden. Inspect only the function signature, then provide
-                boundary test inputs and expected output to verify you understand its contract.
-              </p>
+      {apiError && (
+        <div className="mb-6 p-4 rounded-xl border border-red-500/30 bg-red-950/20 text-red-300 text-xs font-mono flex items-center gap-3">
+          <AlertTriangle className="w-5 h-5 text-red-400 shrink-0" />
+          <span>{apiError}</span>
+        </div>
+      )}
 
-              {/* Function Signature Box */}
-              <div className="p-4 rounded-xl bg-slate-950 border border-slate-800 font-mono text-sm text-blue-300 overflow-x-auto">
-                <div className="text-[11px] text-slate-500 mb-1">// Signature extracted by ts-morph</div>
-                <code>{sample.signature}</code>
+      {/* STEP 1: Blind Specification */}
+      {step === 1 && (
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
+          <div className="lg:col-span-7 space-y-6">
+            <div className="p-6 rounded-2xl border border-slate-800 bg-slate-900/40 space-y-5">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-mono text-blue-400 uppercase tracking-wider font-semibold">
+                  Step 1: Independent Behavioral Oracle
+                </span>
+                <span className="text-[11px] font-mono px-2 py-0.5 rounded bg-blue-500/10 text-blue-300 border border-blue-500/20">
+                  Blind Contract
+                </span>
               </div>
+
+              <div>
+                <h3 className="text-base font-bold text-white">Target Function Signature</h3>
+                <p className="text-xs text-slate-400 mt-1">
+                  Specify input arguments and expected output based solely on the signature contract without inspecting the implementation body.
+                </p>
+              </div>
+
+              {/* Signature Card */}
+              <div className="p-4 rounded-xl border border-slate-800 bg-slate-950 font-mono text-xs text-emerald-400 flex items-center justify-between">
+                <code>{isCustomMode ? "customFunction(...args)" : currentSample.signature}</code>
+                <span className="text-[10px] uppercase font-bold text-slate-500">Pure TS</span>
+              </div>
+
+              {/* Editable Custom Code if toggled */}
+              {isCustomMode && (
+                <div className="space-y-2">
+                  <label className="text-xs font-mono text-slate-300">Edit / Paste TypeScript Function:</label>
+                  <textarea
+                    rows={8}
+                    value={customCode}
+                    onChange={(e) => setCustomCode(e.target.value)}
+                    className="w-full font-mono text-xs bg-slate-950 border border-slate-800 rounded-xl p-3 text-slate-200 focus:outline-none focus:border-blue-500"
+                  />
+                </div>
+              )}
 
               {/* Inputs */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-xs font-semibold text-slate-400 mb-1.5">
-                    Test Arguments (JSON or comma-separated)
+                <div className="space-y-1.5">
+                  <label className="text-xs font-mono text-slate-300">
+                    Test Input Arguments (comma-separated or JSON):
                   </label>
                   <input
                     type="text"
                     value={argsInput}
                     onChange={(e) => setArgsInput(e.target.value)}
-                    className="w-full px-3 py-2 rounded-lg bg-slate-950 border border-slate-800 text-white font-mono text-xs focus:outline-none focus:border-blue-500"
                     placeholder="e.g. 100, false"
+                    className="w-full font-mono text-xs bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2.5 text-white focus:outline-none focus:border-blue-500"
                   />
-                  <span className="text-[10px] text-slate-500 mt-1 block">
-                    Suggested boundary test: <code className="text-slate-400">{sample.defaultArgs}</code>
-                  </span>
                 </div>
 
-                <div>
-                  <label className="block text-xs font-semibold text-slate-400 mb-1.5">Expected Return Value</label>
+                <div className="space-y-1.5">
+                  <label className="text-xs font-mono text-slate-300">
+                    Expected Return Value:
+                  </label>
                   <input
                     type="text"
                     value={expectedInput}
                     onChange={(e) => setExpectedInput(e.target.value)}
-                    className="w-full px-3 py-2 rounded-lg bg-slate-950 border border-slate-800 text-white font-mono text-xs focus:outline-none focus:border-blue-500"
                     placeholder="e.g. 90"
+                    className="w-full font-mono text-xs bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2.5 text-white focus:outline-none focus:border-blue-500"
                   />
-                  <span className="text-[10px] text-slate-500 mt-1 block">
-                    Expected output: <code className="text-slate-400">{sample.defaultExpected}</code>
-                  </span>
                 </div>
               </div>
 
               <button
-                onClick={handleRunBaseline}
-                disabled={isExecuting || !argsInput || !expectedInput}
-                className="w-full py-2.5 px-4 rounded-xl bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white font-semibold text-xs sm:text-sm flex items-center justify-center gap-2 transition-all shadow-lg shadow-blue-600/20"
+                onClick={handleExecuteBaselineAndSaboteur}
+                disabled={isExecuting}
+                className="w-full inline-flex items-center justify-center gap-2 px-5 py-3 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-semibold text-xs transition-all disabled:opacity-50"
               >
                 {isExecuting ? (
                   <>
-                    <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                    <span>Executing Vitest Baseline Oracle...</span>
+                    <Cpu className="w-4 h-4 animate-spin" />
+                    Executing in VM Sandbox...
                   </>
                 ) : (
                   <>
                     <Play className="w-4 h-4" />
-                    <span>Execute Baseline Oracle Probe</span>
+                    Run Baseline Oracle Check & Saboteur Loop
                   </>
                 )}
               </button>
             </div>
-          )}
+          </div>
 
-          {/* STEP 2: BASELINE PASSED */}
-          {step === 2 && (
-            <div className="rounded-2xl border border-emerald-500/30 bg-emerald-950/20 p-6 space-y-5">
-              <div className="flex items-center gap-2.5 text-emerald-400">
-                <CheckCircle2 className="w-6 h-6" />
-                <h3 className="text-base font-bold text-white">Step 2: Baseline Execution Passed (GREEN)</h3>
-              </div>
-              <p className="text-xs text-slate-300 leading-relaxed">
-                Your independent oracle passed against the unmutated original source code! The test framework confirmed
-                that <code className="text-emerald-300 font-mono font-semibold">{sample.name}({argsInput})</code> returned{" "}
-                <code className="text-emerald-300 font-mono font-semibold">{expectedInput}</code>.
+          <div className="lg:col-span-5 space-y-4">
+            <div className="p-5 rounded-2xl border border-slate-800 bg-slate-900/30 space-y-3">
+              <h4 className="text-xs font-mono uppercase tracking-wider text-slate-300 font-bold flex items-center gap-2">
+                <Shield className="w-4 h-4 text-blue-400" />
+                Why the Blind Oracle Matters
+              </h4>
+              <p className="text-xs text-slate-400 leading-relaxed">
+                When developers or LLMs look at code before writing tests, they unconsciously write tests that conform to whatever the code already does (self-fulfilling test bias).
               </p>
-
-              <div className="p-4 rounded-xl bg-slate-950 border border-slate-800 font-mono text-xs text-slate-300 space-y-1">
-                <div className="text-emerald-400 font-semibold">✓ test/baseline.spec.ts (1 test passed)</div>
-                <div className="text-slate-500">Duration: 18ms</div>
-                <div className="text-slate-400">Assertion: expect({sample.name}({argsInput})).toEqual({expectedInput})</div>
-              </div>
-
-              <div className="flex items-center gap-3">
-                <button
-                  onClick={handleProceedToMutation}
-                  disabled={isExecuting}
-                  className="flex-1 py-2.5 px-4 rounded-xl bg-amber-600 hover:bg-amber-500 text-white font-semibold text-xs sm:text-sm flex items-center justify-center gap-2 transition-all shadow-lg shadow-amber-600/20"
-                >
-                  {isExecuting ? (
-                    <>
-                      <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                      <span>Injecting AST Mutation...</span>
-                    </>
-                  ) : (
-                    <>
-                      <Flame className="w-4 h-4" />
-                      <span>Inject AST Boundary Mutant (Step 3)</span>
-                      <ArrowRight className="w-4 h-4" />
-                    </>
-                  )}
-                </button>
-                <button
-                  onClick={() => setStep(1)}
-                  className="px-3 py-2.5 rounded-xl border border-slate-800 bg-slate-900 text-slate-400 hover:text-white text-xs"
-                >
-                  Edit Oracle
-                </button>
-              </div>
-            </div>
-          )}
-
-          {/* STEP 3 & 4: MUTATION & REPAIR */}
-          {(step === 3 || step === 4) && (
-            <div className="rounded-2xl border border-slate-800 bg-slate-900/60 p-6 space-y-5">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2.5 text-amber-400">
-                  <Flame className="w-5 h-5" />
-                  <h3 className="text-base font-bold text-white">
-                    {step === 3 ? "Step 3: Mutation Drill Activated (RED)" : "Step 4: Interactive Diagnosis & Repair"}
-                  </h3>
-                </div>
-                <span className="text-[11px] font-mono px-2 py-0.5 rounded bg-red-500/20 text-red-400 border border-red-500/30">
-                  Mutant Injected
-                </span>
-              </div>
-
-              <p className="text-xs text-slate-300 leading-relaxed">
-                GitSpar injected a boundary operator flip. The test suite failed (RED). Click on the line with the
-                defect to repair it.
+              <p className="text-xs text-slate-400 leading-relaxed">
+                GitSpar hides the function body and forces an independent behavioral contract. If the code breaks your expectation, it catches genuine regressions before they reach code review.
               </p>
-
-              {/* Simulated Code Editor with clickable lines */}
-              <div className="rounded-xl bg-slate-950 border border-slate-800 font-mono text-xs overflow-hidden">
-                <div className="px-4 py-2 bg-slate-900 border-b border-slate-800 text-[11px] text-slate-400 flex items-center justify-between">
-                  <span>{sample.file}</span>
-                  <span className="text-slate-500">Click line to select defect</span>
-                </div>
-                <div className="p-3 divide-y divide-transparent">
-                  {sample.mutatedCode.map((line, idx) => {
-                    const lineNum = idx + 1;
-                    const isSelected = selectedLine === lineNum;
-                    const isFaultyLine = lineNum === sample.mutatedLine;
-                    return (
-                      <div
-                        key={lineNum}
-                        onClick={() => {
-                          setSelectedLine(lineNum);
-                          if (step === 3) setStep(4);
-                        }}
-                        className={`flex items-center gap-3 px-2 py-1.5 rounded cursor-pointer transition-all ${
-                          isSelected
-                            ? "bg-blue-600/20 border border-blue-500/50 text-white"
-                            : isFaultyLine && step === 4
-                            ? "bg-amber-950/30 text-amber-200 hover:bg-amber-900/40"
-                            : "hover:bg-slate-900 text-slate-300"
-                        }`}
-                      >
-                        <span className="w-6 text-right select-none text-slate-600 text-[10px]">{lineNum}</span>
-                        <code className="flex-1 font-mono">{line}</code>
-                        {isSelected && <span className="text-[10px] text-blue-400 uppercase font-bold">Selected</span>}
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-
-              {/* Diagnosis Controls */}
-              {step === 4 && (
-                <div className="p-4 rounded-xl border border-blue-500/30 bg-slate-950/80 space-y-4">
-                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                    <div>
-                      <span className="text-xs font-semibold text-white">Selected Line: </span>
-                      <span className="text-xs font-mono font-bold text-blue-400">Line {selectedLine}</span>
-                    </div>
-
-                    <div className="flex items-center gap-2">
-                      <span className="text-xs text-slate-400">Correct Operator:</span>
-                      <div className="flex items-center gap-1 bg-slate-900 p-1 rounded-lg border border-slate-800">
-                        {[">=", ">", "<=", "<", "==="].map((op) => (
-                          <button
-                            key={op}
-                            onClick={() => setSelectedOperator(op)}
-                            className={`px-2.5 py-1 rounded text-xs font-mono font-bold transition-all ${
-                              selectedOperator === op
-                                ? "bg-blue-600 text-white shadow-sm"
-                                : "text-slate-400 hover:text-white"
-                            }`}
-                          >
-                            {op}
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-                  </div>
-
-                  <div>
-                    <label className="block text-xs font-semibold text-slate-300 mb-1">
-                      1-Sentence Diagnostic Explanation (Required for PR Receipt)
-                    </label>
-                    <input
-                      type="text"
-                      value={diagnosticExplanation}
-                      onChange={(e) => setDiagnosticExplanation(e.target.value)}
-                      placeholder="e.g. Boundary condition flipped from >= to > so 100 was not discounted"
-                      className="w-full px-3 py-2 rounded-lg bg-slate-900 border border-slate-800 text-white font-mono text-xs focus:outline-none focus:border-blue-500"
-                    />
-                    <div className="flex justify-between items-center mt-1 text-[10px] text-slate-500">
-                      <span>Provide clear rationale proving understanding</span>
-                      <button
-                        onClick={() => setDiagnosticExplanation(sample.explanationHint)}
-                        className="text-blue-400 hover:underline"
-                      >
-                        Use recommended hint
-                      </button>
-                    </div>
-                  </div>
-
-                  {repairError && (
-                    <div className="p-3 rounded-lg bg-red-950/40 border border-red-500/30 text-xs text-red-300 flex items-center gap-2">
-                      <AlertTriangle className="w-4 h-4 text-red-400 shrink-0" />
-                      <span>{repairError}</span>
-                    </div>
-                  )}
-
-                  <button
-                    onClick={handleValidateRepair}
-                    disabled={isExecuting}
-                    className="w-full py-2.5 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-semibold text-xs sm:text-sm flex items-center justify-center gap-2 transition-all shadow-lg shadow-emerald-600/20"
-                  >
-                    {isExecuting ? (
-                      <>
-                        <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                        <span>Verifying Repair with Vitest...</span>
-                      </>
-                    ) : (
-                      <>
-                        <CheckCircle2 className="w-4 h-4" />
-                        <span>Confirm Diagnosis &amp; Generate PR Receipt</span>
-                      </>
-                    )}
-                  </button>
-                </div>
-              )}
-
-              {step === 3 && (
-                <div className="text-center">
-                  <p className="text-xs text-slate-400 mb-3">
-                    Click on the line above where the comparison operator was mutated to begin repair.
-                  </p>
-                </div>
-              )}
-            </div>
-          )}
-
-          {/* STEP 5: RECEIPT GENERATED */}
-          {step === 5 && (
-            <div className="rounded-2xl border border-emerald-500/40 bg-slate-900/70 p-6 space-y-6">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2.5 text-emerald-400">
-                  <Shield className="w-6 h-6" />
-                  <div>
-                    <h3 className="text-base font-bold text-white">Comprehension Verified!</h3>
-                    <span className="text-xs text-emerald-400 font-mono">Receipt Generated for Git Pull Request</span>
-                  </div>
-                </div>
-                <button
-                  onClick={() => switchSample(selectedSampleIndex)}
-                  className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg border border-slate-800 bg-slate-900 text-slate-300 hover:text-white text-xs font-mono"
-                >
-                  <RotateCcw className="w-3.5 h-3.5" />
-                  Reset
-                </button>
-              </div>
-
-              {/* Receipt Visual Card */}
-              <div className="rounded-xl border border-slate-800 bg-slate-950 p-4 font-mono text-xs text-slate-300 space-y-2.5 shadow-inner">
-                <div className="flex items-center justify-between pb-2 border-b border-slate-800 text-[11px] text-slate-400">
-                  <span className="text-white font-bold">.gitspar/receipt.json</span>
-                  <span className="text-emerald-400 font-semibold">STATUS: VERIFIED</span>
-                </div>
-                <div className="grid grid-cols-2 gap-2 text-[11px]">
-                  <div>
-                    <span className="text-slate-500">Function: </span>
-                    <span className="text-white">{sample.name}</span>
-                  </div>
-                  <div>
-                    <span className="text-slate-500">Mode: </span>
-                    <span className="text-blue-400">mutation_drill</span>
-                  </div>
-                  <div>
-                    <span className="text-slate-500">Mutated Line: </span>
-                    <span className="text-amber-400">Line {sample.mutatedLine}</span>
-                  </div>
-                  <div>
-                    <span className="text-slate-500">Restored: </span>
-                    <span className="text-emerald-400">{sample.originalOp}</span>
-                  </div>
-                </div>
-                <div className="text-[11px]">
-                  <span className="text-slate-500">Diagnostic Proof: </span>
-                  <span className="text-slate-200 italic">&ldquo;{diagnosticExplanation}&rdquo;</span>
-                </div>
-                <div className="pt-2 border-t border-slate-800 text-[10px] text-slate-500 truncate">
-                  SHA-256: {generatedSha}
-                </div>
-              </div>
-
-              {/* Actions */}
-              <div className="flex flex-wrap items-center gap-3">
-                <button
-                  onClick={copyReceipt}
-                  className="flex-1 py-2 px-3 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-semibold text-xs flex items-center justify-center gap-1.5 shadow-md shadow-blue-600/20"
-                >
-                  {copiedReceipt ? (
-                    <>
-                      <Check className="w-3.5 h-3.5" />
-                      <span>Copied Markdown!</span>
-                    </>
-                  ) : (
-                    <>
-                      <Copy className="w-3.5 h-3.5" />
-                      <span>Copy PR Receipt Markdown</span>
-                    </>
-                  )}
-                </button>
-                <button
-                  onClick={downloadReceiptJson}
-                  className="py-2 px-3 rounded-xl border border-slate-700 bg-slate-900 hover:bg-slate-800 text-slate-200 font-semibold text-xs flex items-center gap-1.5"
-                >
-                  <Download className="w-3.5 h-3.5" />
-                  <span>Download receipt.json</span>
-                </button>
-                <Link
-                  href="/dashboard"
-                  className="py-2 px-3 rounded-xl border border-slate-800 bg-slate-950 text-slate-400 hover:text-white font-semibold text-xs flex items-center gap-1.5"
-                >
-                  <span>View Dashboard</span>
-                  <ArrowRight className="w-3.5 h-3.5" />
-                </Link>
-              </div>
-            </div>
-          )}
-        </div>
-
-        {/* Right Terminal Output Log */}
-        <div className="lg:col-span-5 flex flex-col">
-          <div className="rounded-2xl border border-slate-800 bg-slate-950 flex-1 flex flex-col shadow-2xl overflow-hidden min-h-[420px]">
-            {/* Terminal Top Bar */}
-            <div className="px-4 py-3 bg-slate-900/90 border-b border-slate-800 flex items-center justify-between text-xs font-mono">
-              <div className="flex items-center gap-2">
-                <span className="w-3 h-3 rounded-full bg-red-500/80 inline-block" />
-                <span className="w-3 h-3 rounded-full bg-amber-500/80 inline-block" />
-                <span className="w-3 h-3 rounded-full bg-emerald-500/80 inline-block" />
-                <span className="text-slate-400 ml-2 font-medium">terminal — vitest runner</span>
-              </div>
-              <Terminal className="w-4 h-4 text-slate-500" />
-            </div>
-
-            {/* Terminal Body */}
-            <div className="p-4 font-mono text-[11px] sm:text-xs leading-relaxed space-y-3 flex-1 overflow-y-auto text-slate-300">
-              <div className="text-slate-500">$ gitspar --interactive</div>
-              <div className="text-blue-400">
-                [GitSpar v0.3.0] Analyzing working tree against origin/master...
-              </div>
-
-              {step >= 1 && (
-                <div className="space-y-1">
-                  <div className="text-slate-400">
-                    &gt; Discovered eligible function: <span className="text-white font-bold">{sample.name}</span>
-                  </div>
-                  <div className="text-slate-400">
-                    &gt; Target file: <span className="text-slate-300">{sample.file}</span>
-                  </div>
-                  <div className="text-indigo-400">&gt; Waiting for Blind Independent Oracle inputs...</div>
-                </div>
-              )}
-
-              {step >= 2 && (
-                <div className="space-y-1 border-t border-slate-900 pt-2">
-                  <div className="text-slate-400">
-                    &gt; Running isolated Vitest check on unmodified function...
-                  </div>
-                  <div className="text-emerald-400 font-bold">
-                    [PASS] Oracle check succeeded! Baseline returned expected value: {expectedInput}
-                  </div>
-                </div>
-              )}
-
-              {step >= 3 && (
-                <div className="space-y-1 border-t border-slate-900 pt-2">
-                  <div className="text-amber-400">
-                    &gt; Injecting boundary AST mutant on line {sample.mutatedLine}...
-                  </div>
-                  <div className="text-slate-400">
-                    &gt; Operator flipped: {sample.originalOp} -&gt; {sample.mutatedOp}
-                  </div>
-                  <div className="text-red-400 font-bold">
-                    [FAIL] Vitest runner failed as expected! Mutant is ALIVE.
-                  </div>
-                  <div className="text-red-300/80 text-[10px] pl-2 border-l-2 border-red-500">
-                    AssertionError: expected {expectedInput} // Object.is equality
-                  </div>
-                </div>
-              )}
-
-              {step >= 4 && (
-                <div className="space-y-1 border-t border-slate-900 pt-2">
-                  <div className="text-blue-400">&gt; Awaiting developer diagnosis and repair...</div>
-                  {selectedLine && (
-                    <div className="text-slate-300">
-                      &gt; Candidate line selected: {selectedLine} (operator: {selectedOperator})
-                    </div>
-                  )}
-                </div>
-              )}
-
-              {step === 5 && (
-                <div className="space-y-1 border-t border-slate-900 pt-2">
-                  <div className="text-emerald-400 font-bold">
-                    [PASS] Vitest runner repaired! Mutant KILLED.
-                  </div>
-                  <div className="text-emerald-300">
-                    &gt; Verified change comprehension. Saved .gitspar/receipt.json.
-                  </div>
-                  <div className="text-slate-400 text-[10px]">&gt; Exit code 0</div>
-                </div>
-              )}
             </div>
           </div>
         </div>
-      </div>
+      )}
+
+      {/* STEP 2: Baseline Verified & Agent Trace */}
+      {step === 2 && (
+        <div className="p-6 rounded-2xl border border-slate-800 bg-slate-900/40 space-y-6">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2 text-emerald-400 text-sm font-bold font-mono">
+              <CheckCircle2 className="w-5 h-5" />
+              <span>Step 2: Baseline Execution Passed (GREEN)</span>
+            </div>
+            <span className="text-xs font-mono px-2.5 py-1 rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+              Return Value: {JSON.stringify(serverData?.baselineOutput)}
+            </span>
+          </div>
+
+          <p className="text-xs text-slate-300 leading-relaxed">
+            Your unmodified implementation satisfied the blind expectation contract. The autonomous{" "}
+            <code className="text-blue-400 font-mono">SaboteurAgent</code> analyzed AST relational expressions and attempted mutation kill passes.
+          </p>
+
+          {/* Live SaboteurAgent Trace */}
+          {serverData?.agentTrace && (
+            <div className="rounded-xl border border-slate-800 bg-slate-950 p-4 font-mono text-xs space-y-2">
+              <div className="text-[11px] text-blue-400 uppercase tracking-wider font-bold border-b border-slate-800 pb-2 flex items-center justify-between">
+                <span>Autonomous SaboteurAgent Execution Trace</span>
+                <span className="text-slate-500 font-normal">Real Server Runtime</span>
+              </div>
+              <div className="space-y-1.5 pt-1">
+                {serverData.agentTrace.map((line, idx) => (
+                  <div key={idx} className="flex items-start gap-2 text-slate-300">
+                    <span className="text-slate-600 select-none">[{idx + 1}]</span>
+                    <span>{line}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          <div className="flex justify-end gap-3 pt-2">
+            <button
+              onClick={resetDrill}
+              className="px-4 py-2 rounded-xl border border-slate-800 text-xs font-mono text-slate-400 hover:text-white"
+            >
+              Reset
+            </button>
+            <button
+              onClick={handleProceedToDrill}
+              className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-semibold text-xs transition-all"
+            >
+              <span>Proceed to Mutation Diagnostic Drill</span>
+              <ArrowRight className="w-4 h-4" />
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* STEP 3: Saboteur Mutation Drill */}
+      {step === 3 && (
+        <div className="p-6 rounded-2xl border border-slate-800 bg-slate-900/40 space-y-6">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-800 pb-4">
+            <div>
+              <span className="text-xs font-mono text-red-400 uppercase tracking-wider font-semibold flex items-center gap-1.5">
+                <Flame className="w-4 h-4 text-red-400" />
+                Step 3: Mutant Killed (RED) — Diagnostic Challenge
+              </span>
+              <h2 className="text-lg font-bold text-white mt-1">
+                Diagnose the Injected Mutation
+              </h2>
+            </div>
+            <div className="text-xs font-mono text-slate-400">
+              Click the line with the broken boundary condition
+            </div>
+          </div>
+
+          {/* Interactive Code Viewer */}
+          <div className="rounded-xl border border-slate-800 bg-slate-950 font-mono text-xs overflow-hidden">
+            <div className="px-4 py-2 bg-slate-900/80 border-b border-slate-800 text-slate-400 flex items-center justify-between text-[11px]">
+              <span>Active Mutated Implementation</span>
+              <span>Click a line to select defect</span>
+            </div>
+            <div className="p-4 space-y-1">
+              {(serverData?.mutatedCode || currentCode).split("\n").map((lineText, idx) => {
+                const lineNum = idx + 1;
+                const isSelected = selectedLine === lineNum;
+                return (
+                  <div
+                    key={lineNum}
+                    onClick={() => setSelectedLine(lineNum)}
+                    className={`flex items-center gap-4 px-2 py-1 rounded cursor-pointer transition-colors ${
+                      isSelected
+                        ? "bg-red-500/20 text-red-300 font-bold border-l-4 border-red-500"
+                        : "hover:bg-slate-900 text-slate-300"
+                    }`}
+                  >
+                    <span className="w-8 text-right text-slate-600 select-none">{lineNum}</span>
+                    <pre className="overflow-x-auto whitespace-pre font-mono">{lineText}</pre>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Diagnosis Inputs */}
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 pt-2">
+            <div>
+              <label className="text-xs font-mono text-slate-300 block mb-1.5">Diagnosed Line:</label>
+              <div className="px-3.5 py-2.5 rounded-xl border border-slate-800 bg-slate-950 text-xs font-mono text-white">
+                {selectedLine ? `Line ${selectedLine}` : "Click a line above"}
+              </div>
+            </div>
+
+            <div>
+              <label className="text-xs font-mono text-slate-300 block mb-1.5">Correct Operator:</label>
+              <select
+                value={selectedOperator}
+                onChange={(e) => setSelectedOperator(e.target.value)}
+                className="w-full px-3.5 py-2.5 rounded-xl border border-slate-800 bg-slate-950 text-xs font-mono text-white focus:outline-none focus:border-blue-500"
+              >
+                <option value=">=">&gt;= (Greater or Equal)</option>
+                <option value=">">&gt; (Strictly Greater)</option>
+                <option value="<=">&lt;= (Less or Equal)</option>
+                <option value="<">&lt; (Strictly Less)</option>
+                <option value="===">=== (Strict Equality)</option>
+                <option value="!==">!== (Inequality)</option>
+              </select>
+            </div>
+
+            <div className="sm:col-span-3 space-y-1.5">
+              <label className="text-xs font-mono text-slate-300 block">
+                Diagnostic Explanation (graded by SocraticEvaluatorAgent):
+              </label>
+              <textarea
+                rows={2}
+                value={diagnosticExplanation}
+                onChange={(e) => setDiagnosticExplanation(e.target.value)}
+                placeholder="Explain why mutating this boundary operator caused the oracle test input to fail..."
+                className="w-full px-3.5 py-2.5 rounded-xl border border-slate-800 bg-slate-950 text-xs font-mono text-white focus:outline-none focus:border-blue-500"
+              />
+            </div>
+          </div>
+
+          {repairError && (
+            <div className="p-3.5 rounded-xl border border-yellow-500/30 bg-yellow-950/20 text-yellow-300 text-xs font-mono flex items-center gap-2">
+              <AlertTriangle className="w-4 h-4 text-yellow-400 shrink-0" />
+              <span>{repairError}</span>
+            </div>
+          )}
+
+          <div className="flex justify-end gap-3">
+            <button
+              onClick={handleSubmitDiagnosis}
+              disabled={isExecuting}
+              className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-semibold text-xs transition-all disabled:opacity-50"
+            >
+              {isExecuting ? <Cpu className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}
+              <span>Submit to Socratic Evaluator & Transfer Probe</span>
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* STEP 4: Socratic Feedback & Transfer Probe */}
+      {step === 4 && (
+        <div className="p-6 rounded-2xl border border-slate-800 bg-slate-900/40 space-y-6">
+          <div className="flex items-center justify-between border-b border-slate-800 pb-4">
+            <div>
+              <span className="text-xs font-mono text-indigo-400 uppercase tracking-wider font-semibold flex items-center gap-1.5">
+                <Sparkles className="w-4 h-4 text-indigo-400" />
+                Step 4: Unseen Transfer Probe Assessment
+              </span>
+              <h2 className="text-lg font-bold text-white mt-1">
+                Predict Unseen Counterfactual Input
+              </h2>
+            </div>
+            <span className="text-xs font-mono px-2.5 py-1 rounded bg-indigo-500/10 text-indigo-300 border border-indigo-500/20">
+              Transfer Probe
+            </span>
+          </div>
+
+          {/* Socratic Evaluator Confirmation Banner */}
+          <div className="p-4 rounded-xl border border-emerald-500/30 bg-emerald-950/20 text-emerald-300 text-xs font-mono flex items-start gap-3">
+            <CheckCircle2 className="w-5 h-5 text-emerald-400 shrink-0 mt-0.5" />
+            <div>
+              <div className="font-bold">SocraticEvaluator: Explanation Approved ({serverData?.socraticEvaluation?.score ?? 92}/100)</div>
+              <p className="text-emerald-400/80 mt-0.5 text-[11px]">
+                {serverData?.socraticEvaluation?.feedback || "Your explanation articulated the causal boundary condition mechanism."}
+              </p>
+            </div>
+          </div>
+
+          {/* Transfer Probe Challenge Card */}
+          <div className="p-5 rounded-xl border border-slate-800 bg-slate-950 space-y-4">
+            <div className="text-xs font-mono text-slate-300 leading-relaxed">
+              To verify that your comprehension generalizes rather than being memorized, the autonomous agent synthesized an unseen counterfactual input near the boundary:
+            </div>
+
+            <div className="p-3.5 rounded-lg border border-slate-800 bg-slate-900/70 font-mono text-xs flex items-center justify-between">
+              <span className="text-slate-400">Counterfactual Input:</span>
+              <code className="text-indigo-400 font-bold">
+                {serverData?.activeFnName || currentSample.name}({JSON.stringify(serverData?.transferProbe?.probeInput ?? []).slice(1, -1)})
+              </code>
+            </div>
+
+            <div className="space-y-1.5">
+              <label className="text-xs font-mono text-slate-300">
+                Without running the code, what will this unseen input return?
+              </label>
+              <div className="flex gap-3">
+                <input
+                  type="text"
+                  value={transferAnswer}
+                  onChange={(e) => setTransferAnswer(e.target.value)}
+                  placeholder="Enter predicted return value (e.g. 80 or true)"
+                  className="flex-1 font-mono text-xs bg-slate-900 border border-slate-800 rounded-xl px-3.5 py-2.5 text-white focus:outline-none focus:border-indigo-500"
+                />
+                <button
+                  onClick={handleVerifyTransfer}
+                  disabled={isExecuting}
+                  className="px-5 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-semibold text-xs font-mono transition-all disabled:opacity-50"
+                >
+                  {isExecuting ? "Verifying..." : "Verify Generalization"}
+                </button>
+              </div>
+            </div>
+
+            {repairError && (
+              <div className="p-3.5 rounded-xl border border-red-500/30 bg-red-950/20 text-red-300 text-xs font-mono flex items-center gap-2">
+                <XCircle className="w-4 h-4 text-red-400 shrink-0" />
+                <span>{repairError}</span>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* STEP 5: Signed Cryptographic Receipt */}
+      {step === 5 && (
+        <div className="p-6 rounded-2xl border border-slate-800 bg-slate-900/40 space-y-6">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-800 pb-4">
+            <div className="flex items-center gap-3">
+              <div className="p-2.5 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-400">
+                <Shield className="w-6 h-6" />
+              </div>
+              <div>
+                <span className="text-xs font-mono text-emerald-400 uppercase tracking-wider font-semibold">
+                  Step 5: Assessment Verified & Signed
+                </span>
+                <h2 className="text-xl font-bold text-white">Cryptographic PR Receipt Generated</h2>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <button
+                onClick={copyReceipt}
+                className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl border border-slate-800 bg-slate-900 text-xs font-mono text-slate-300 hover:text-white transition-all"
+              >
+                {copiedReceipt ? <Check className="w-4 h-4 text-emerald-400" /> : <Copy className="w-4 h-4" />}
+                <span>{copiedReceipt ? "Copied Markdown" : "Copy Markdown"}</span>
+              </button>
+
+              <button
+                onClick={downloadReceipt}
+                className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-xs font-mono text-white font-semibold transition-all shadow-sm"
+              >
+                <Download className="w-4 h-4" />
+                <span>Download JSON</span>
+              </button>
+            </div>
+          </div>
+
+          {/* Receipt Markdown Viewer */}
+          <div className="rounded-xl border border-slate-800 bg-slate-950 p-4 font-mono text-xs text-slate-300 overflow-x-auto">
+            <pre className="whitespace-pre-wrap">{receiptMarkdown}</pre>
+          </div>
+
+          <div className="flex justify-between items-center pt-2">
+            <button
+              onClick={resetDrill}
+              className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl border border-slate-800 text-xs font-mono text-slate-400 hover:text-white"
+            >
+              <RotateCcw className="w-4 h-4" />
+              <span>Run Another Assessment</span>
+            </button>
+
+            <Link
+              href="/dashboard"
+              className="inline-flex items-center gap-2 px-5 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-xs font-mono text-white font-semibold"
+            >
+              <span>View Reviewer Leaderboard</span>
+              <ArrowRight className="w-4 h-4" />
+            </Link>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

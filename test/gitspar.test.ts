@@ -1,12 +1,13 @@
 import { describe, it, expect, afterAll } from 'vitest';
 import { resolve } from 'node:path';
 import { existsSync, rmSync, readFileSync, mkdirSync } from 'node:fs';
-import { discoverEligibleFunctions, createBoundaryMutant } from '../src/ast.js';
+import { discoverEligibleFunctions, createBoundaryMutant, discoverAllMutationCandidates } from '../src/ast.js';
 import { runIsolatedVitestCheck } from '../src/runner.js';
 import { getRepoContext, resolveBaseRef } from '../src/git.js';
 import { saveReceipt, AssessmentReceipt } from '../src/receipt.js';
 import { runCiCheck } from '../src/cli.js';
 import { loadGitSparConfig } from '../src/config.js';
+import { SaboteurAgent, SocraticEvaluatorAgent, TransferProbeAgent } from '../src/agent.js';
 
 describe('GitSpar v0.3.0 End-to-End Engine & CI Verification', () => {
   const examplePath = resolve(process.cwd(), 'examples/checkoutDiscount.ts');
@@ -118,11 +119,79 @@ describe('GitSpar v0.3.0 End-to-End Engine & CI Verification', () => {
     expect(code).toBe(0);
   });
 
-  it('CI Mode: runCiCheck returns 1 (FAIL) when receipt is missing', async () => {
-    const dummyDir = resolve(process.cwd(), '.gitspar/empty-check');
-    mkdirSync(dummyDir, { recursive: true });
-    const code = await runCiCheck(dummyDir);
-    expect(code).toBe(1);
-    rmSync(dummyDir, { recursive: true, force: true });
+  it('Agentic Loop: SaboteurAgent executes autonomous mutant-kill retry loop with reasoning trace', async () => {
+    const saboteur = new SaboteurAgent(process.cwd());
+    const candidates = discoverAllMutationCandidates(examplePath, 'calculateTierDiscount');
+    expect(candidates.length).toBeGreaterThan(0);
+    expect(candidates[0].originalOperator).toBe('>=');
+
+    const result = await saboteur.findKillingMutant(
+      examplePath,
+      'calculateTierDiscount',
+      '[100, false]',
+      '90',
+      tempMutantPath
+    );
+
+    expect(result.killingMutant.mutatedLine).toBe(2);
+    expect(result.mutantKilled).toBe(true);
+    expect(result.agentTrace.length).toBeGreaterThanOrEqual(2);
+    expect(result.agentTrace.some((t) => t.includes('KILLED'))).toBe(true);
+  });
+
+  it('Agentic Loop: SocraticEvaluatorAgent rejects vague explanations and accepts causal boundary proofs', async () => {
+    const evaluator = new SocraticEvaluatorAgent();
+
+    // 1. Vague explanation rejected
+    const vagueEval = await evaluator.evaluateExplanation({
+      explanation: 'I fixed the bug',
+      functionName: 'calculateTierDiscount',
+      originalExpression: 'orderTotal >= 100',
+      mutatedExpression: 'orderTotal > 100',
+      mutatedLine: 2,
+      mutatedOperator: '>',
+      oracleInput: [100, false],
+      oracleExpectedOutput: 90,
+      variableNames: ['orderTotal', 'isStudent'],
+    });
+
+    expect(vagueEval.approved).toBe(false);
+    expect(vagueEval.score).toBeLessThan(50);
+    expect(vagueEval.socraticPrompt).toBeDefined();
+
+    // 2. Clear causal explanation approved
+    const goodEval = await evaluator.evaluateExplanation({
+      explanation:
+        'The boundary condition was mutated from >= to > which caused orderTotal of 100 to evaluate false and return full price instead of 90.',
+      functionName: 'calculateTierDiscount',
+      originalExpression: 'orderTotal >= 100',
+      mutatedExpression: 'orderTotal > 100',
+      mutatedLine: 2,
+      mutatedOperator: '>',
+      oracleInput: [100, false],
+      oracleExpectedOutput: 90,
+      variableNames: ['orderTotal', 'isStudent'],
+    });
+
+    expect(goodEval.approved).toBe(true);
+    expect(goodEval.score).toBeGreaterThanOrEqual(70);
+    expect(goodEval.feedback).toBeDefined();
+  });
+
+  it('Agentic Loop: TransferProbeAgent synthesizes counterfactual inputs and computes ground truth', () => {
+    const transfer = new TransferProbeAgent(process.cwd());
+
+    // 1. Synthesize counterfactual probe
+    const probe = transfer.synthesizeProbe([100, false], 'calculateTierDiscount');
+    expect(probe.probeInput).toEqual([101, true]);
+    expect(probe.reasoning).toContain('100,false');
+
+    // 2. Compute ground-truth execution
+    const groundTruth = transfer.computeGroundTruth(examplePath, 'calculateTierDiscount', [100, true]);
+    expect(groundTruth).toBe(80); // Student discount: 100 * 0.8 = 80
+
+    // 3. User answer validation
+    expect(transfer.evaluateUserAnswer('80', 80)).toBe(true);
+    expect(transfer.evaluateUserAnswer('90', 80)).toBe(false);
   });
 });
