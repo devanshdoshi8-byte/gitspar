@@ -73,7 +73,12 @@ function runInSandbox(code: string, functionName: string, args: unknown[]): { su
       },
     }).outputText;
 
+    const exportsObj: Record<string, unknown> = {};
+    const moduleObj = { exports: exportsObj };
+
     const sandbox: Record<string, unknown> = {
+      exports: exportsObj,
+      module: moduleObj,
       args,
       Math,
       Date,
@@ -89,10 +94,18 @@ function runInSandbox(code: string, functionName: string, args: unknown[]): { su
 
     const script = new vm.Script(`
       ${transpiled}
-      if (typeof ${functionName} !== 'function') {
+      const __targetFn = (typeof ${functionName} === 'function') 
+        ? ${functionName} 
+        : (exports && typeof exports.${functionName} === 'function') 
+          ? exports.${functionName} 
+          : (module && module.exports && typeof module.exports.${functionName} === 'function')
+            ? module.exports.${functionName}
+            : undefined;
+
+      if (typeof __targetFn !== 'function') {
         throw new Error("Function '${functionName}' is not defined or exported.");
       }
-      output = ${functionName}(...args);
+      output = __targetFn(...args);
     `);
 
     const context = vm.createContext(sandbox);
