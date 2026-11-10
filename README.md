@@ -10,10 +10,10 @@
 ---
 
 ### 🌐 Live Web Portal & Interactive Simulator
-- **Live Production App:** [https://web-lovat-pi-62.vercel.app](https://web-lovat-pi-62.vercel.app)
-- **Live Interactive Mutation Simulator:** [https://web-lovat-pi-62.vercel.app/demo](https://web-lovat-pi-62.vercel.app/demo)
-- **Reviewer & Hackathon Leaderboard:** [https://web-lovat-pi-62.vercel.app/dashboard](https://web-lovat-pi-62.vercel.app/dashboard)
-- **Clean-Room Verification Portal:** [https://web-lovat-pi-62.vercel.app/verify/PR-1082](https://web-lovat-pi-62.vercel.app/verify/PR-1082)
+- **Live Production App:** [https://gitspar.vercel.app](https://gitspar.vercel.app)
+- **Live Interactive Mutation Simulator:** [https://gitspar.vercel.app/demo](https://gitspar.vercel.app/demo)
+- **Reviewer & Team Leaderboard:** [https://gitspar.vercel.app/dashboard](https://gitspar.vercel.app/dashboard)
+- **Clean-Room Verification Portal:** [https://gitspar.vercel.app/verify/PR-1082](https://gitspar.vercel.app/verify/PR-1082)
 - **Automated Engine Benchmarks:** [BENCHMARKS.md](BENCHMARKS.md) (100% mutant kill rate & CI enforcement).
 - **Vercel Deployment Guide:** [DEPLOYMENT.md](DEPLOYMENT.md).
 

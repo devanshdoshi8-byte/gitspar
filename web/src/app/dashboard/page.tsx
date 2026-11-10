@@ -21,6 +21,9 @@ import {
   TrendingUp,
   Bug,
   Award,
+  Download,
+  GitPullRequest,
+  Terminal,
 } from "lucide-react";
 
 export interface SubmissionRecord {
@@ -231,6 +234,8 @@ export default function DashboardPage() {
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedRecord, setSelectedRecord] = useState<SubmissionRecord | null>(null);
   const [copiedHash, setCopiedHash] = useState(false);
+  const [showCiModal, setShowCiModal] = useState(false);
+  const [copiedYaml, setCopiedYaml] = useState(false);
 
   // Filter submissions
   const filtered = SEED_SUBMISSIONS.filter((item) => {
@@ -253,6 +258,37 @@ export default function DashboardPage() {
     setTimeout(() => setCopiedHash(false), 2000);
   };
 
+  const handleExportJson = () => {
+    const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(filtered, null, 2));
+    const downloadAnchor = document.createElement("a");
+    downloadAnchor.setAttribute("href", dataStr);
+    downloadAnchor.setAttribute("download", `gitspar-compliance-audit-${new Date().toISOString().slice(0, 10)}.json`);
+    document.body.appendChild(downloadAnchor);
+    downloadAnchor.click();
+    downloadAnchor.remove();
+  };
+
+  const copyCiYaml = () => {
+    const yaml = `name: GitSpar Gatekeeper
+on: [pull_request]
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm ci
+      - run: npx gitspar --ci`;
+    navigator.clipboard.writeText(yaml);
+    setCopiedYaml(true);
+    setTimeout(() => setCopiedYaml(false), 2000);
+  };
+
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10 space-y-8">
       {/* Page Title & Breadcrumbs */}
@@ -273,7 +309,23 @@ export default function DashboardPage() {
           </p>
         </div>
 
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center gap-2 sm:gap-3">
+          <button
+            onClick={handleExportJson}
+            className="flex items-center gap-1.5 px-3 py-2 rounded-xl border border-slate-800 bg-slate-900/80 hover:bg-slate-800 text-slate-300 text-xs font-semibold transition-all shadow-sm"
+          >
+            <Download className="w-3.5 h-3.5 text-blue-400" />
+            <span>Export Audit Log</span>
+          </button>
+
+          <button
+            onClick={() => setShowCiModal(true)}
+            className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl border border-blue-500/30 bg-blue-500/10 hover:bg-blue-500/20 text-blue-400 text-xs font-semibold transition-all shadow-sm"
+          >
+            <GitPullRequest className="w-3.5 h-3.5" />
+            <span>Connect GitHub CI</span>
+          </button>
+
           <Link
             href="/demo"
             className="flex items-center gap-2 px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs sm:text-sm font-semibold transition-all shadow-md shadow-blue-600/20"
@@ -584,6 +636,88 @@ export default function DashboardPage() {
                 className="px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold transition-colors"
               >
                 Close Inspector
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* CI Gate Modal */}
+      {showCiModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-150">
+          <div className="relative w-full max-w-2xl rounded-2xl border border-slate-800 bg-slate-900 p-6 shadow-2xl space-y-5">
+            <div className="flex items-center justify-between border-b border-slate-800 pb-4">
+              <div className="flex items-center gap-2.5">
+                <div className="w-8 h-8 rounded-lg bg-blue-500/10 border border-blue-500/20 flex items-center justify-center text-blue-400">
+                  <GitPullRequest className="w-4 h-4" />
+                </div>
+                <div>
+                  <h3 className="text-base font-bold text-white">Connect GitHub CI Status Gate</h3>
+                  <p className="text-xs text-slate-400">Enforce verified human comprehension receipts before merge</p>
+                </div>
+              </div>
+              <button
+                onClick={() => setShowCiModal(false)}
+                className="text-slate-400 hover:text-white p-1 rounded-lg hover:bg-slate-800 transition-colors"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="space-y-4 text-xs">
+              <div className="space-y-1.5">
+                <span className="font-semibold text-slate-200">Step 1: Add Workflow to your Repository</span>
+                <p className="text-slate-400">
+                  Create <code className="text-blue-400 font-mono">.github/workflows/gitspar-gate.yml</code> in your repository root:
+                </p>
+              </div>
+
+              <div className="relative rounded-xl bg-slate-950 border border-slate-800 p-4 font-mono text-[11px] text-slate-300 overflow-x-auto">
+                <button
+                  onClick={copyCiYaml}
+                  className="absolute top-3 right-3 flex items-center gap-1 px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 text-[10px] transition-colors"
+                >
+                  {copiedYaml ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3" />}
+                  <span>{copiedYaml ? "Copied" : "Copy YAML"}</span>
+                </button>
+                <pre>{`name: GitSpar Gatekeeper
+on: [pull_request]
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm ci
+      - run: npx gitspar --ci`}</pre>
+              </div>
+
+              <div className="space-y-1.5">
+                <span className="font-semibold text-slate-200">Step 2: Developer Workflow</span>
+                <p className="text-slate-400">
+                  Before opening a PR, developers run <code className="text-blue-400 font-mono">npx gitspar</code> locally to complete the drill. The resulting <code className="text-slate-300 font-mono">.gitspar/receipt.json</code> is committed alongside their diff.
+                </p>
+              </div>
+
+              <div className="space-y-1.5">
+                <span className="font-semibold text-slate-200">Step 3: Automated Enforcement</span>
+                <p className="text-slate-400">
+                  If any lines are modified without re-running the drill, the GitHub Action fails with exit code 1, guarding the main branch from unverified AI hallucinations.
+                </p>
+              </div>
+            </div>
+
+            <div className="flex justify-end pt-2 border-t border-slate-800">
+              <button
+                onClick={() => setShowCiModal(false)}
+                className="px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold transition-colors"
+              >
+                Done
               </button>
             </div>
           </div>
