@@ -43,8 +43,8 @@ export default function LandingPage() {
         <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[350px] bg-gradient-to-tr from-blue-600/20 via-blue-500/10 to-emerald-500/10 blur-[120px] rounded-full pointer-events-none -z-10" />
 
         <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full border border-blue-500/30 bg-blue-500/10 text-blue-400 text-xs font-semibold mb-6 shadow-sm">
-          <Shield className="w-4 h-4 text-blue-400 animate-pulse" />
-          <span>Editor-Agnostic Diagnostic Gatekeeper</span>
+          <Shield className="w-4 h-4 text-blue-400" />
+          <span>Verified Change Understanding</span>
         </div>
 
         <h1 className="text-4xl sm:text-6xl lg:text-7xl font-extrabold tracking-tight text-white max-w-4xl leading-[1.1]">
@@ -55,8 +55,7 @@ export default function LandingPage() {
         </h1>
 
         <p className="mt-6 text-lg sm:text-xl text-slate-300 max-w-2xl font-normal leading-relaxed">
-          An editor-agnostic diagnostic gatekeeper that transforms AI-generated code changes into executable
-          comprehension drills.
+          Verify that you understand your AI-assisted code changes through deterministic boundary mutation drills before you merge.
         </p>
 
         {/* Copyable Terminal Card */}
@@ -196,13 +195,13 @@ export default function LandingPage() {
               <li className="flex items-start gap-2.5">
                 <Check className="w-5 h-5 text-emerald-400 shrink-0" />
                 <span>
-                  <strong>AST Boundary Mutation:</strong> Flips comparison operators (`&gt;=`, `&lt;=`, `===`) to verify you detect edge behavior.
+                  <strong>AST Boundary Mutation:</strong> Flips comparison operators (<code className="font-mono text-xs bg-slate-100 text-slate-900 px-1.5 py-0.5 rounded border border-slate-200">&gt;=</code>, <code className="font-mono text-xs bg-slate-100 text-slate-900 px-1.5 py-0.5 rounded border border-slate-200">&lt;=</code>, <code className="font-mono text-xs bg-slate-100 text-slate-900 px-1.5 py-0.5 rounded border border-slate-200">===</code>) to verify you detect edge behavior.
                 </span>
               </li>
               <li className="flex items-start gap-2.5">
                 <Check className="w-5 h-5 text-emerald-400 shrink-0" />
                 <span>
-                  <strong>Cryptographic PR Receipt:</strong> Binds base commit SHA and working diff SHA-256 into `.gitspar/receipt.json`.
+                  <strong>Signed Verification Receipt:</strong> Binds base commit SHA and working diff SHA-256 into <code className="font-mono text-xs bg-slate-100 text-slate-900 px-1.5 py-0.5 rounded border border-slate-200">.gitspar/receipt.json</code>.
                 </span>
               </li>
             </ul>
@@ -258,7 +257,7 @@ export default function LandingPage() {
               </div>
               <h4 className="text-base font-bold text-white mb-2">Blind Independent Oracle</h4>
               <p className="text-xs text-slate-400 leading-relaxed">
-                Presents you with solely the function signature (e.g. `calculateDiscount(total, isStudent)`). You specify
+                Presents you with solely the function signature (e.g. <code className="font-mono text-xs bg-slate-100 text-slate-900 px-1.5 py-0.5 rounded border border-slate-200">calculateDiscount(total, isStudent)</code>). You specify
                 boundary inputs and expected output blind to the body.
               </p>
             </div>
@@ -278,7 +277,7 @@ export default function LandingPage() {
               </div>
               <h4 className="text-base font-bold text-white mb-2">AST Mutation Drill</h4>
               <p className="text-xs text-slate-400 leading-relaxed">
-                ts-morph parses the AST, flips a critical boundary comparison (`&gt;=` to `&gt;`), runs Vitest (must fail
+                ts-morph parses the AST, flips a critical boundary comparison (<code className="font-mono text-xs bg-slate-100 text-slate-900 px-1.5 py-0.5 rounded border border-slate-200">&gt;=</code> to <code className="font-mono text-xs bg-slate-100 text-slate-900 px-1.5 py-0.5 rounded border border-slate-200">&gt;</code>), runs Vitest (must fail
                 RED), and tests your diagnosis on line repair.
               </p>
             </div>
@@ -298,7 +297,7 @@ export default function LandingPage() {
               </div>
               <h4 className="text-base font-bold text-white mb-2">Verifiable PR Receipt</h4>
               <p className="text-xs text-slate-400 leading-relaxed">
-                Generates a cryptographically bound `.gitspar/receipt.json` and Markdown table for your PR. CI enforces
+                Generates a cryptographically bound <code className="font-mono text-xs bg-slate-100 text-slate-900 px-1.5 py-0.5 rounded border border-slate-200">.gitspar/receipt.json</code> and Markdown table for your PR. CI enforces
                 instant check pass or rejection.
               </p>
             </div>
@@ -316,7 +315,7 @@ export default function LandingPage() {
             How GitSpar Compares
           </h2>
           <p className="mt-3 text-slate-400 text-base max-w-2xl mx-auto">
-            Why executable mutation testing renders conversational quizzes and sandbox benchmarks obsolete.
+            Why executable mutation testing provides stronger verification than chat quizzes or coverage metrics.
           </p>
         </div>
 
@@ -352,7 +351,7 @@ export default function LandingPage() {
               <tr className="hover:bg-slate-800/20 transition-colors">
                 <td className="py-4 px-6 font-semibold text-white">Cloud Dependency &amp; Setup Cost</td>
                 <td className="py-4 px-6 text-emerald-400 bg-blue-950/20 border-x border-blue-900/30 font-medium">
-                  Zero cloud setup (`npx gitspar` in local repo)
+                  Zero cloud setup (<code className="font-mono text-xs bg-slate-100 text-slate-900 px-1.5 py-0.5 rounded border border-slate-200">npx gitspar</code> in local repo)
                 </td>
                 <td className="py-4 px-6 text-slate-400">Requires SaaS server &amp; OpenAI API keys</td>
                 <td className="py-4 px-6 text-slate-400">Requires dedicated cloud VM sandboxes</td>
@@ -394,19 +393,35 @@ export default function LandingPage() {
           {[
             {
               q: "How does GitSpar work alongside AI editors like Cursor, Copilot, and Antigravity?",
-              a: "AI editors like Cursor, GitHub Copilot, and Antigravity are creation tools designed for high-velocity code generation inside the IDE. GitSpar serves as an editor-agnostic verification gatekeeper that runs locally before push (or in CI). Just as Git and Vitest complement IDE code writing, GitSpar ensures that code generated with AI assistance is fully understood, diagnosed, and tested before merging.",
+              a: (
+                <span>
+                  AI editors like Cursor, GitHub Copilot, and Antigravity are creation tools designed for high-velocity code generation inside the IDE. GitSpar serves as a local verification gate that runs before push (or in CI). Just as Git and Vitest complement IDE code writing, GitSpar ensures that code generated with AI assistance is fully understood, diagnosed, and tested before merging.
+                </span>
+              ),
             },
             {
               q: "Why are executable AST mutations superior to conversational quizzes?",
-              a: "Text-based quizzes can be copied and solved by an LLM in 2 seconds without the developer learning anything. Executable mutations require understanding actual runtime behavior: an isolated Vitest test suite executes your blind input expectations, introduces a precise AST boundary flip, and validates that you can locate and repair the failing branch.",
+              a: (
+                <span>
+                  Text-based quizzes can be copied and solved by an LLM in 2 seconds without the developer learning anything. Executable mutations require understanding actual runtime behavior: an isolated Vitest test suite executes your blind input expectations, introduces a precise AST boundary flip, and validates that you can locate and repair the failing branch.
+                </span>
+              ),
             },
             {
               q: "How does GitSpar ensure the developer didn't modify code after verifying?",
-              a: "GitSpar computes a cryptographic SHA-256 hash of the exact git diff between your working tree and the merge base commit (`git merge-base origin/master HEAD`). This hash is embedded into `.gitspar/receipt.json`. If a single character is altered after verification, CI recalculates the diff hash and fails immediately.",
+              a: (
+                <span>
+                  GitSpar computes a cryptographic SHA-256 hash of the exact git diff between your working tree and the merge base commit (<code className="font-mono text-xs bg-slate-100 text-slate-900 px-1.5 py-0.5 rounded border border-slate-200">git merge-base origin/master HEAD</code>). This hash is embedded into <code className="font-mono text-xs bg-slate-100 text-slate-900 px-1.5 py-0.5 rounded border border-slate-200">.gitspar/receipt.json</code>. If a single character is altered after verification, CI recalculates the diff hash and fails immediately.
+                </span>
+              ),
             },
             {
               q: "Does GitSpar send our proprietary source code to any third-party cloud?",
-              a: "No. GitSpar is 100% local and open-source. AST analysis is performed using ts-morph, and test execution runs on your local Vitest instance. There are zero external API calls, zero telemetry tracking, and zero data leakage.",
+              a: (
+                <span>
+                  No. GitSpar is 100% local and open-source. AST analysis is performed using ts-morph, and test execution runs on your local Vitest instance. There are zero external API calls, zero telemetry tracking, and zero data leakage.
+                </span>
+              ),
             },
           ].map((item, index) => (
             <div

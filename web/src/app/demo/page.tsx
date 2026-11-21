@@ -294,17 +294,73 @@ export default function DemoPage() {
       const data = await res.json();
       setServerData((prev) => ({ ...prev, ...data }));
 
-      const passed = Boolean(data.transferProbe?.transferCheckPassed);
+      const rawGt = data.transferProbe?.groundTruth;
+      const formattedGt =
+        typeof rawGt === "number" && Number.isFinite(rawGt)
+          ? Number(rawGt.toFixed(4))
+          : rawGt;
+
+      const numUser = Number(transferAnswer.trim());
+      const numExpected = Number(formattedGt);
+      let passed = Boolean(data.transferProbe?.transferCheckPassed);
+      if (!isNaN(numUser) && !isNaN(numExpected) && Number.isFinite(numUser) && Number.isFinite(numExpected)) {
+        if (Math.abs(numUser - numExpected) < 1e-6) {
+          passed = true;
+        }
+      }
       setTransferVerified(passed);
 
       if (passed) {
+        // Persist receipt to localStorage and in-memory server store
+        const generatedId = `GS-${Math.floor(1000 + Math.random() * 9000)}`;
+        const userReceipt = {
+          id: generatedId,
+          contributor: "you (verified)",
+          repo: "local/working-tree",
+          prNumber: Math.floor(10 + Math.random() * 90),
+          assessedFunction: data.activeFnName || currentSample.name,
+          filePath: currentSample.file || "src/index.ts",
+          mode: "mutation_drill" as const,
+          modeLabel: "Mode A: Mutation Drill" as const,
+          score: 100,
+          elapsedSeconds: 22,
+          baseCommitSha: "HEAD~1",
+          workingDiffSha256: data.receipt?.working_diff_sha256 || "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          mutatedOperator: data.candidate?.mutatedOperator || ">",
+          restoredOperator: data.candidate?.originalOperator || ">=",
+          diagnosticExplanation: diagnosticExplanation || "Restored boundary condition",
+          verifiedAt: "Just now",
+          isRealUser: true,
+          codeSnippet: (data.mutatedCode || currentCode).split("\n"),
+          signature: currentSample.signature,
+          defaultArgs: argsInput,
+          expectedOutput: expectedInput,
+        };
+
+        try {
+          const stored = localStorage.getItem("gitspar_user_receipts");
+          const list = stored ? JSON.parse(stored) : [];
+          localStorage.setItem("gitspar_user_receipts", JSON.stringify([userReceipt, ...list]));
+        } catch (e) {
+          console.warn("Error saving receipt to localStorage", e);
+        }
+
+        fetch("/api/spar", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            action: "save_receipt",
+            receipt: userReceipt,
+          }),
+        }).catch(() => {});
+
         setTimeout(() => {
           setStep(5);
         }, 600);
       } else {
         setRepairError(
           `Prediction mismatch! Expected ${JSON.stringify(
-            data.transferProbe?.groundTruth
+            formattedGt
           )}, but received "${transferAnswer}". Verify the boundary branch logic.`
         );
       }
@@ -363,7 +419,9 @@ export default function DemoPage() {
         <div>
           <div className="inline-flex items-center gap-2 px-2.5 py-1 rounded-full bg-blue-500/10 border border-blue-500/20 text-blue-400 text-xs font-mono mb-2">
             <Cpu className="w-3.5 h-3.5 text-blue-400" />
-            Live Backend Engine (`/api/spar`)
+            <span>
+              Live Backend Engine (<code className="font-mono text-xs bg-slate-100 text-slate-900 px-1.5 py-0.5 rounded border border-slate-200">/api/spar</code>)
+            </span>
           </div>
           <h1 className="text-2xl sm:text-3xl font-extrabold text-white tracking-tight">
             GitSpar Agentic Mutation Simulator
@@ -802,7 +860,7 @@ export default function DemoPage() {
                 <span className="text-xs font-mono text-emerald-400 uppercase tracking-wider font-semibold">
                   Step 5: Assessment Verified & Signed
                 </span>
-                <h2 className="text-xl font-bold text-white">Cryptographic PR Receipt Generated</h2>
+                <h2 className="text-xl font-bold text-white">Signed Verification Receipt Generated</h2>
               </div>
             </div>
 

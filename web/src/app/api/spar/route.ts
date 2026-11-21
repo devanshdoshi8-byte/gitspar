@@ -6,14 +6,17 @@ import crypto from 'node:crypto';
 export const runtime = 'nodejs';
 
 interface SparRequestBody {
-  action?: 'analyze' | 'sabotage' | 'evaluate' | 'transfer' | 'full';
-  code: string;
+  action?: 'analyze' | 'sabotage' | 'evaluate' | 'transfer' | 'full' | 'save_receipt' | 'get_receipts';
+  code?: string;
   functionName?: string;
-  oracleArgs: string | unknown[];
-  expectedOutput: string | unknown;
+  oracleArgs?: string | unknown[];
+  expectedOutput?: string | unknown;
   userExplanation?: string;
   transferAnswer?: string;
+  receipt?: unknown;
 }
+
+const inMemoryReceipts: unknown[] = [];
 
 interface MutationCandidate {
   index: number;
@@ -209,7 +212,17 @@ function mutateCode(code: string, candidate: MutationCandidate): { mutatedCode: 
 export async function POST(req: Request) {
   try {
     const body: SparRequestBody = await req.json();
-    const { code, oracleArgs, expectedOutput, userExplanation, transferAnswer } = body;
+
+    if (body.action === 'save_receipt' && body.receipt) {
+      inMemoryReceipts.unshift(body.receipt);
+      return NextResponse.json({ success: true, count: inMemoryReceipts.length });
+    }
+
+    if (body.action === 'get_receipts') {
+      return NextResponse.json({ success: true, receipts: inMemoryReceipts });
+    }
+
+    const { code, oracleArgs = [], expectedOutput = '', userExplanation, transferAnswer } = body;
 
     if (!code || typeof code !== 'string') {
       return NextResponse.json({ error: 'Source code is required.' }, { status: 400 });
@@ -340,12 +353,25 @@ export async function POST(req: Request) {
     const transferGroundTruth = runInSandbox(code, activeFnName, probeInput);
     let transferCheckPassed: boolean | undefined = undefined;
 
+    const rawTruth = transferGroundTruth.result;
+    const formattedTruth =
+      typeof rawTruth === 'number' && Number.isFinite(rawTruth)
+        ? Number(rawTruth.toFixed(4))
+        : rawTruth;
+
     if (transferAnswer !== undefined && transferGroundTruth.success) {
       const trimmedAns = String(transferAnswer).trim();
-      const expectedStr = JSON.stringify(transferGroundTruth.result);
-      transferCheckPassed =
-        trimmedAns === String(transferGroundTruth.result) ||
-        JSON.stringify(parseExpected(trimmedAns)) === expectedStr;
+      const numUser = Number(trimmedAns);
+      const numExpected = Number(formattedTruth);
+
+      if (!isNaN(numUser) && !isNaN(numExpected) && Number.isFinite(numUser) && Number.isFinite(numExpected)) {
+        transferCheckPassed = Math.abs(numUser - numExpected) < 1e-6;
+      } else {
+        const expectedStr = JSON.stringify(formattedTruth);
+        transferCheckPassed =
+          trimmedAns === String(formattedTruth) ||
+          JSON.stringify(parseExpected(trimmedAns)) === expectedStr;
+      }
     }
 
     // 6. Cryptographic Diff Fingerprint
@@ -365,7 +391,7 @@ export async function POST(req: Request) {
       socraticEvaluation,
       transferProbe: {
         probeInput,
-        groundTruth: transferGroundTruth.result,
+        groundTruth: formattedTruth,
         transferCheckPassed,
       },
       receipt: {

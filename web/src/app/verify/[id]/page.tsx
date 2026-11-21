@@ -48,7 +48,7 @@ const SAMPLE_PR_CHALLENGES: Record<string, VerificationItem> = {
     mutatedOp: ">",
     codeSnippet: [
       "export function calculateTierDiscount(orderTotal: number, isStudent: boolean): number {",
-      "  if (orderTotal > 100) { // <-- BOUNDARY MUTATION ACTIVE",
+      "  if (orderTotal > 100) {",
       "    return orderTotal * 0.9;",
       "  }",
       "  return isStudent ? orderTotal * 0.95 : orderTotal;",
@@ -70,7 +70,7 @@ const SAMPLE_PR_CHALLENGES: Record<string, VerificationItem> = {
     mutatedOp: ">",
     codeSnippet: [
       "export function isSessionValid(now: number, expiresAt: number): boolean {",
-      "  if (now > expiresAt) { // <-- MUTATED BOUNDARY",
+      "  if (now > expiresAt) {",
       "    return false;",
       "  }",
       "  return true;",
@@ -92,7 +92,7 @@ const SAMPLE_PR_CHALLENGES: Record<string, VerificationItem> = {
     mutatedOp: ">",
     codeSnippet: [
       "export function calculateTierDiscount(orderTotal: number, isStudent: boolean): number {",
-      "  if (orderTotal > 100) { // <-- MUTATED OPERATOR: >= became >",
+      "  if (orderTotal > 100) {",
       "    return orderTotal * 0.9;",
       "  }",
       "  return isStudent ? orderTotal * 0.95 : orderTotal;",
@@ -114,7 +114,7 @@ const SAMPLE_PR_CHALLENGES: Record<string, VerificationItem> = {
     mutatedOp: "<",
     codeSnippet: [
       "export function verifySessionExpiry(tokenIssuedAt: number, maxLifetime: number): boolean {",
-      "  if (Date.now() - tokenIssuedAt < maxLifetime) { // <-- MUTATED OPERATOR",
+      "  if (Date.now() - tokenIssuedAt < maxLifetime) {",
       "    return true;",
       "  }",
       "  return false;",
@@ -136,7 +136,7 @@ const SAMPLE_PR_CHALLENGES: Record<string, VerificationItem> = {
     mutatedOp: "<",
     codeSnippet: [
       "export function checkRateLimit(currentUsage: number, limit: number): boolean {",
-      "  if (currentUsage < limit) { // <-- MUTATED OPERATOR: <= became <",
+      "  if (currentUsage < limit) {",
       "    return true;",
       "  }",
       "  return false;",
@@ -158,7 +158,7 @@ const SAMPLE_PR_CHALLENGES: Record<string, VerificationItem> = {
     mutatedOp: ">",
     codeSnippet: [
       "export function evaluateVitalsRisk(systolicBP: number, threshold: number): boolean {",
-      "  if (systolicBP > threshold) { // <-- MUTATED OPERATOR",
+      "  if (systolicBP > threshold) {",
       "    return true;",
       "  }",
       "  return false;",
@@ -180,7 +180,7 @@ const SAMPLE_PR_CHALLENGES: Record<string, VerificationItem> = {
     mutatedOp: ">",
     codeSnippet: [
       "export function allocateWarehouseStock(availableQty: number, requestedQty: number): boolean {",
-      "  if (availableQty > requestedQty) { // <-- MUTATED OPERATOR",
+      "  if (availableQty > requestedQty) {",
       "    return true;",
       "  }",
       "  return false;",
@@ -202,7 +202,7 @@ const SAMPLE_PR_CHALLENGES: Record<string, VerificationItem> = {
     mutatedOp: "<",
     codeSnippet: [
       "export function checkRolePermission(userLevel: number, requiredLevel: number): boolean {",
-      "  if (userLevel < requiredLevel) { // <-- MUTATED OPERATOR",
+      "  if (userLevel < requiredLevel) {",
       "    return false;",
       "  }",
       "  return true;",
@@ -219,7 +219,7 @@ export default function VerifyCleanRoomPage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = use(params);
-  const data = SAMPLE_PR_CHALLENGES[id] || {
+  const fallbackChallenge: VerificationItem = SAMPLE_PR_CHALLENGES[id] || {
     id: id || "CUSTOM-VERIFY",
     repo: "acme-auth/session-guard",
     author: "dev-lead",
@@ -241,6 +241,44 @@ export default function VerifyCleanRoomPage({
     defaultArgs: "100, 100",
     expectedOutput: "true",
   };
+
+  const [data, setData] = useState<VerificationItem>(fallbackChallenge);
+
+  useEffect(() => {
+    try {
+      const stored = localStorage.getItem("gitspar_user_receipts");
+      if (stored) {
+        const list = JSON.parse(stored);
+        if (Array.isArray(list)) {
+          const match = list.find((item: any) => item.id === id);
+          if (match) {
+            setData({
+              id: match.id,
+              repo: match.repo || "local/working-tree",
+              author: match.contributor || "you",
+              prNumber: match.prNumber || 1,
+              functionName: match.assessedFunction || "assessedFunction",
+              file: match.filePath || "src/index.ts",
+              signature: match.signature || `${match.assessedFunction || "function"}(...)`,
+              mutatedLine: match.mutatedLine || 2,
+              originalOp: match.restoredOperator || ">=",
+              mutatedOp: match.mutatedOperator || ">",
+              codeSnippet: Array.isArray(match.codeSnippet) && match.codeSnippet.length > 0
+                ? match.codeSnippet
+                : fallbackChallenge.codeSnippet,
+              defaultArgs: typeof match.defaultArgs === "string" ? match.defaultArgs : JSON.stringify(match.defaultArgs || "100"),
+              expectedOutput: typeof match.expectedOutput === "string" ? match.expectedOutput : JSON.stringify(match.expectedOutput || "true"),
+            });
+            if (match.diagnosticExplanation) {
+              setExplanation(match.diagnosticExplanation);
+            }
+          }
+        }
+      }
+    } catch (e) {
+      console.warn("Could not load receipt from localStorage", e);
+    }
+  }, [id]);
 
   // 60-second countdown timer
   const TOTAL_TIME = 60;
@@ -394,7 +432,7 @@ export default function VerifyCleanRoomPage({
                       }`}
                     >
                       <span className="w-6 text-right select-none text-slate-600 text-[10px]">{lineNum}</span>
-                      <code className="flex-1 font-mono">{line}</code>
+                      <code className="flex-1 font-mono">{line.replace(/\s*\/\/\s*<--.*$/, "")}</code>
                       {isSelected && <span className="text-[10px] text-blue-400 font-bold uppercase">Selected</span>}
                     </div>
                   );

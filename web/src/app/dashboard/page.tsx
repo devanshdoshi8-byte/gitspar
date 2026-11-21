@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import Link from "next/link";
 import {
   Shield,
@@ -44,6 +44,7 @@ export interface SubmissionRecord {
   restoredOperator: string;
   diagnosticExplanation: string;
   verifiedAt: string;
+  isRealUser?: boolean;
 }
 
 const SEED_SUBMISSIONS: SubmissionRecord[] = [
@@ -236,9 +237,26 @@ export default function DashboardPage() {
   const [copiedHash, setCopiedHash] = useState(false);
   const [showCiModal, setShowCiModal] = useState(false);
   const [copiedYaml, setCopiedYaml] = useState(false);
+  const [userSubmissions, setUserSubmissions] = useState<SubmissionRecord[]>([]);
+
+  useEffect(() => {
+    try {
+      const stored = localStorage.getItem("gitspar_user_receipts");
+      if (stored) {
+        const parsed = JSON.parse(stored);
+        if (Array.isArray(parsed)) {
+          setUserSubmissions(parsed);
+        }
+      }
+    } catch (e) {
+      console.warn("Could not load user receipts from localStorage", e);
+    }
+  }, []);
+
+  const allSubmissions = [...userSubmissions, ...SEED_SUBMISSIONS];
 
   // Filter submissions
-  const filtered = SEED_SUBMISSIONS.filter((item) => {
+  const filtered = allSubmissions.filter((item) => {
     if (filterTab !== "all" && item.mode !== filterTab) return false;
     if (searchQuery) {
       const q = searchQuery.toLowerCase();
@@ -453,6 +471,15 @@ jobs:
                       {item.contributor.substring(0, 2)}
                     </div>
                     <span>@{item.contributor}</span>
+                    {item.isRealUser ? (
+                      <span className="px-1.5 py-0.5 rounded-full bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 text-[9px] font-semibold">
+                        Live Receipt
+                      </span>
+                    ) : (
+                      <span className="px-1.5 py-0.5 rounded-full bg-slate-800 text-slate-400 border border-slate-700 text-[9px] font-semibold">
+                        Sample
+                      </span>
+                    )}
                   </td>
 
                   <td className="py-3 px-4 text-slate-400 group-hover:text-slate-300">
@@ -499,16 +526,26 @@ jobs:
                   </td>
 
                   <td className="py-3 px-4 text-center">
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setSelectedRecord(item);
-                      }}
-                      className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg border border-slate-700 bg-slate-800 hover:bg-slate-700 text-slate-200 text-[11px] font-sans font-medium transition-colors"
-                    >
-                      <FileCheck className="w-3 h-3 text-blue-400" />
-                      <span>Inspect</span>
-                    </button>
+                    <div className="flex items-center justify-center gap-1.5">
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setSelectedRecord(item);
+                        }}
+                        className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg border border-slate-700 bg-slate-800 hover:bg-slate-700 text-slate-200 text-[11px] font-sans font-medium transition-colors"
+                      >
+                        <FileCheck className="w-3 h-3 text-blue-400" />
+                        <span>Inspect</span>
+                      </button>
+                      <Link
+                        href={`/verify/${item.id}`}
+                        onClick={(e) => e.stopPropagation()}
+                        className="inline-flex items-center gap-1 px-2 py-1 rounded-lg border border-blue-500/30 bg-blue-500/10 hover:bg-blue-500/20 text-blue-300 text-[11px] font-sans font-medium transition-colors"
+                      >
+                        <span>View Receipt</span>
+                        <ArrowUpRight className="w-3 h-3" />
+                      </Link>
+                    </div>
                   </td>
                 </tr>
               );
