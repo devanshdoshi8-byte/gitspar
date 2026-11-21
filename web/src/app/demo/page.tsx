@@ -129,6 +129,9 @@ export default function DemoPage() {
       mutated_line: number;
       mutated_operator: string;
       transfer_check_passed?: boolean;
+      signature?: string;
+      signatureMode?: string;
+      canonicalPayload?: string;
     };
   } | null>(null);
 
@@ -329,12 +332,15 @@ export default function DemoPage() {
           mutatedOperator: data.candidate?.mutatedOperator || ">",
           restoredOperator: data.candidate?.originalOperator || ">=",
           diagnosticExplanation: diagnosticExplanation || "Restored boundary condition",
-          verifiedAt: "Just now",
+          verifiedAt: data.receipt?.timestamp || new Date().toISOString(),
           isRealUser: true,
           codeSnippet: (data.mutatedCode || currentCode).split("\n"),
-          signature: currentSample.signature,
+          functionSignature: currentSample.signature,
           defaultArgs: argsInput,
           expectedOutput: expectedInput,
+          signature: data.receipt?.signature,
+          signatureMode: data.receipt?.signatureMode || "local-dev",
+          canonicalPayload: data.receipt?.canonicalPayload,
         };
 
         try {
@@ -393,6 +399,7 @@ export default function DemoPage() {
 - **Mutant Operator Restored:** \`${serverData?.candidate?.originalOperator || ">="}\` (mutated to \`${serverData?.candidate?.mutatedOperator || ">"}\`)
 - **Transfer Probe Generalization:** ${serverData?.transferProbe?.transferCheckPassed ? "✅ Passed (Verified Unseen Input)" : "⚠️ Skipped"}
 - **Diagnostic Proof:** "${diagnosticExplanation}"
+- **HMAC Signature:** \`${serverData?.receipt?.signature || "N/A"}\` (\`${serverData?.receipt?.signatureMode || "local-dev"}\`)
 - **Status:** ✅ VERIFIED COMPREHENSION
 <!-- GITSPAR_RECEIPT_END -->`;
 

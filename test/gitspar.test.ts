@@ -4,7 +4,13 @@ import { existsSync, rmSync, readFileSync, mkdirSync } from 'node:fs';
 import { discoverEligibleFunctions, createBoundaryMutant, discoverAllMutationCandidates } from '../src/ast.js';
 import { runIsolatedVitestCheck } from '../src/runner.js';
 import { getRepoContext, resolveBaseRef } from '../src/git.js';
-import { saveReceipt, AssessmentReceipt } from '../src/receipt.js';
+import {
+  saveReceipt,
+  AssessmentReceipt,
+  signReceiptPayload,
+  verifyReceiptSignature,
+  serializeCanonicalPayload,
+} from '../src/receipt.js';
 import { runCiCheck } from '../src/cli.js';
 import { loadGitSparConfig } from '../src/config.js';
 import { SaboteurAgent, SocraticEvaluatorAgent, TransferProbeAgent } from '../src/agent.js';
@@ -193,5 +199,61 @@ describe('GitSpar v0.3.0 End-to-End Engine & CI Verification', () => {
     // 3. User answer validation
     expect(transfer.evaluateUserAnswer('80', 80)).toBe(true);
     expect(transfer.evaluateUserAnswer('90', 80)).toBe(false);
+  });
+
+  it('Cryptographic Receipts: signs canonical payload and verifies genuine HMAC signature', () => {
+    const payload = {
+      receiptId: 'GS-TEST-100',
+      diffSha256: 'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855',
+      functionName: 'calculateTierDiscount',
+      mode: 'mutation_drill',
+      score: 100,
+      verifiedAt: '2026-11-22T00:00:00.000Z',
+    };
+
+    const signed = signReceiptPayload(payload);
+    expect(signed.signature).toHaveLength(64);
+    expect(signed.signatureMode).toBeDefined();
+
+    const verification = verifyReceiptSignature({
+      ...payload,
+      signature: signed.signature,
+      signature_mode: signed.signatureMode,
+      canonical_payload: signed.canonicalPayload,
+    });
+
+    expect(verification.valid).toBe(true);
+    expect(verification.reason).toContain('Valid cryptographic HMAC signature');
+  });
+
+  it('Cryptographic Receipts: rejects tampered receipt payload (diffSha256 or score altered)', () => {
+    const payload = {
+      receiptId: 'GS-TEST-200',
+      diffSha256: 'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855',
+      functionName: 'calculateTierDiscount',
+      mode: 'mutation_drill',
+      score: 100,
+      verifiedAt: '2026-11-22T00:00:00.000Z',
+    };
+
+    const signed = signReceiptPayload(payload);
+
+    // Tampering 1: Attacker modifies workingDiffSha256
+    const tamperedDiff = verifyReceiptSignature({
+      ...payload,
+      diffSha256: 'ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff',
+      signature: signed.signature,
+    });
+    expect(tamperedDiff.valid).toBe(false);
+    expect(tamperedDiff.reason).toContain('tamper');
+
+    // Tampering 2: Attacker alters score
+    const tamperedScore = verifyReceiptSignature({
+      ...payload,
+      score: 100,
+      signature: signReceiptPayload({ ...payload, score: 50 }).signature,
+    });
+    expect(tamperedScore.valid).toBe(false);
+    expect(tamperedScore.reason).toContain('mismatch');
   });
 });

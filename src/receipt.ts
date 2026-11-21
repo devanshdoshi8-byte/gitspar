@@ -1,7 +1,110 @@
 import { mkdirSync, writeFileSync, existsSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
+import crypto from 'node:crypto';
+
+export interface CanonicalReceiptPayload {
+  receiptId: string;
+  diffSha256: string;
+  functionName: string;
+  mode: string;
+  score: number;
+  verifiedAt: string;
+}
+
+export function serializeCanonicalPayload(payload: CanonicalReceiptPayload): string {
+  // Deterministic canonical JSON with sorted keys
+  return JSON.stringify({
+    diffSha256: String(payload.diffSha256 || ''),
+    functionName: String(payload.functionName || ''),
+    mode: String(payload.mode || ''),
+    receiptId: String(payload.receiptId || ''),
+    score: Number(payload.score ?? 100),
+    verifiedAt: String(payload.verifiedAt || ''),
+  });
+}
+
+export function signReceiptPayload(
+  payload: CanonicalReceiptPayload,
+  secret?: string
+): { signature: string; signatureMode: 'production-hmac' | 'local-dev'; canonicalPayload: string } {
+  const envSecret = secret || process.env.GITSPAR_SIGNING_SECRET;
+  const signatureMode: 'production-hmac' | 'local-dev' = process.env.GITSPAR_SIGNING_SECRET ? 'production-hmac' : 'local-dev';
+  const activeSecret = envSecret || 'gitspar_local_dev_secret_key_insecure_fallback';
+
+  const canonicalPayload = serializeCanonicalPayload(payload);
+  const hmac = crypto.createHmac('sha256', activeSecret);
+  hmac.update(canonicalPayload);
+  const signature = hmac.digest('hex');
+
+  return {
+    signature,
+    signatureMode,
+    canonicalPayload,
+  };
+}
+
+export function verifyReceiptSignature(
+  receipt: any,
+  secret?: string
+): { valid: boolean; reason: string } {
+  if (!receipt || typeof receipt !== 'object') {
+    return { valid: false, reason: 'Receipt is not an object.' };
+  }
+
+  const signature = receipt.signature;
+  if (!signature || typeof signature !== 'string') {
+    return { valid: false, reason: 'Receipt is missing cryptographic signature.' };
+  }
+
+  // Extract canonical fields
+  const payload: CanonicalReceiptPayload = {
+    receiptId: receipt.receiptId || receipt.receipt_id || receipt.id || '',
+    diffSha256: receipt.diffSha256 || receipt.working_diff_sha256 || '',
+    functionName: receipt.functionName || receipt.function_name || '',
+    mode: receipt.mode || '',
+    score: typeof receipt.score === 'number' ? receipt.score : 100,
+    verifiedAt: receipt.verifiedAt || receipt.timestamp || '',
+  };
+
+  const expectedCanonical = serializeCanonicalPayload(payload);
+
+  if (receipt.canonicalPayload && receipt.canonicalPayload !== expectedCanonical) {
+    return {
+      valid: false,
+      reason: 'Payload tampering detected: canonical payload does not match receipt properties.',
+    };
+  }
+
+  const envSecret = secret || process.env.GITSPAR_SIGNING_SECRET;
+  const activeSecret = envSecret || 'gitspar_local_dev_secret_key_insecure_fallback';
+
+  const hmac = crypto.createHmac('sha256', activeSecret);
+  hmac.update(expectedCanonical);
+  const expectedSig = hmac.digest('hex');
+
+  try {
+    const sigBuf = Buffer.from(signature, 'hex');
+    const expBuf = Buffer.from(expectedSig, 'hex');
+
+    if (sigBuf.length !== expBuf.length || !crypto.timingSafeEqual(sigBuf, expBuf)) {
+      return {
+        valid: false,
+        reason: 'Cryptographic signature mismatch: receipt payload has been tampered with.',
+      };
+    }
+  } catch (err: unknown) {
+    return {
+      valid: false,
+      reason: `Signature verification error: ${(err as Error).message}`,
+    };
+  }
+
+  return { valid: true, reason: 'Valid cryptographic HMAC signature.' };
+}
 
 export interface AssessmentReceipt {
+  id?: string;
+  receipt_id?: string;
   timestamp: string;
   base_commit_sha: string;
   working_diff_sha256: string;
@@ -18,12 +121,17 @@ export interface AssessmentReceipt {
   repair_test: 'passed';
   diagnosed_line: number;
   explanation: string;
+  score?: number;
   // Multi-step agentic verification extensions
   transfer_check_input?: unknown[];
   transfer_check_expected?: unknown;
   transfer_check_user_answer?: string;
   transfer_check_passed?: boolean;
   agent_reasoning_trace?: string[];
+  // Cryptographic signature & tamper evidence
+  signature?: string;
+  signature_mode?: 'production-hmac' | 'local-dev';
+  canonical_payload?: string;
 }
 
 export function saveReceipt(
@@ -36,6 +144,22 @@ export function saveReceipt(
 
   const jsonPath = resolve(outputDir, 'receipt.json');
   const markdownPath = resolve(outputDir, 'PR_RECEIPT.md');
+
+  // Automatically sign if signature is not yet attached
+  if (!receipt.signature) {
+    const signed = signReceiptPayload({
+      receiptId: receipt.receipt_id || receipt.id || 'GS-0001',
+      diffSha256: receipt.working_diff_sha256,
+      functionName: receipt.function_name,
+      mode: receipt.mode,
+      score: receipt.score ?? 100,
+      verifiedAt: receipt.timestamp,
+    });
+    receipt.id = receipt.id || receipt.receipt_id || 'GS-0001';
+    receipt.signature = signed.signature;
+    receipt.signature_mode = signed.signatureMode;
+    receipt.canonical_payload = signed.canonicalPayload;
+  }
 
   // 1. Save receipt.json
   writeFileSync(jsonPath, JSON.stringify(receipt, null, 2), 'utf-8');
@@ -98,6 +222,7 @@ ${receipt.agent_reasoning_trace.map((t) => `- \`${t}\``).join('\n')}
 | **Mutant Killing Test** | \`${receipt.mutation_test}\` |
 | **Final / Repair Test** | \`${receipt.repair_test}\` |
 | **Diagnosed Defect Line** | \`Line ${receipt.diagnosed_line}\` |
+| **HMAC Signature** | \`${receipt.signature || 'N/A'}\` (\`${receipt.signature_mode || 'local-dev'}\`) |
 
 ---
 

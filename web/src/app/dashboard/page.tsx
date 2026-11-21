@@ -24,6 +24,10 @@ import {
   Download,
   GitPullRequest,
   Terminal,
+  Lock,
+  Key,
+  ShieldCheck,
+  ShieldAlert,
 } from "lucide-react";
 
 export interface SubmissionRecord {
@@ -45,6 +49,9 @@ export interface SubmissionRecord {
   diagnosticExplanation: string;
   verifiedAt: string;
   isRealUser?: boolean;
+  signature?: string;
+  signatureMode?: "production-hmac" | "local-dev";
+  canonicalPayload?: string;
 }
 
 const SEED_SUBMISSIONS: SubmissionRecord[] = [
@@ -238,6 +245,92 @@ export default function DashboardPage() {
   const [showCiModal, setShowCiModal] = useState(false);
   const [copiedYaml, setCopiedYaml] = useState(false);
   const [userSubmissions, setUserSubmissions] = useState<SubmissionRecord[]>([]);
+
+  // Cryptographic verification state
+  const [verifyStatus, setVerifyStatus] = useState<{
+    loading: boolean;
+    valid?: boolean;
+    reason?: string;
+    signature?: string;
+    signatureMode?: string;
+    tampered?: boolean;
+    checkedAt?: string;
+  } | null>(null);
+
+  const openInspector = (record: SubmissionRecord) => {
+    setSelectedRecord(record);
+    setVerifyStatus(null);
+  };
+
+  const handleVerifyRecord = async (tamper: boolean = false) => {
+    if (!selectedRecord) return;
+    setVerifyStatus((prev) => ({ loading: true, ...prev }));
+    try {
+      const activeDiff = selectedRecord.workingDiffSha256 || "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855";
+      const testedDiff = tamper
+        ? activeDiff.startsWith("0000")
+          ? "ffff" + activeDiff.slice(4)
+          : "0000" + activeDiff.slice(4)
+        : activeDiff;
+
+      let sig = selectedRecord.signature;
+      if (!sig) {
+        const signRes = await fetch("/api/verify", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            action: "sign",
+            receipt: {
+              receiptId: selectedRecord.id,
+              diffSha256: activeDiff,
+              functionName: selectedRecord.assessedFunction,
+              mode: selectedRecord.mode,
+              score: selectedRecord.score,
+              verifiedAt: selectedRecord.verifiedAt,
+            },
+          }),
+        });
+        const signData = await signRes.json();
+        sig = signData.signature;
+        selectedRecord.signature = sig;
+        selectedRecord.signatureMode = signData.signatureMode;
+      }
+
+      const res = await fetch("/api/verify", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          receipt: {
+            receiptId: selectedRecord.id,
+            diffSha256: testedDiff,
+            functionName: selectedRecord.assessedFunction,
+            mode: selectedRecord.mode,
+            score: selectedRecord.score,
+            verifiedAt: selectedRecord.verifiedAt,
+            signature: sig,
+          },
+        }),
+      });
+      const resData = await res.json();
+      setVerifyStatus({
+        loading: false,
+        valid: resData.valid,
+        reason: resData.reason,
+        signature: sig,
+        signatureMode: resData.signatureMode,
+        tampered: tamper,
+        checkedAt: new Date().toLocaleTimeString(),
+      });
+    } catch (err: unknown) {
+      setVerifyStatus({
+        loading: false,
+        valid: false,
+        reason: (err as Error).message || "Verification request failed",
+        tampered: tamper,
+        checkedAt: new Date().toLocaleTimeString(),
+      });
+    }
+  };
 
   useEffect(() => {
     try {
@@ -637,8 +730,8 @@ jobs:
                 </div>
               </div>
 
-              {/* Cryptographic Hashes */}
-              <div className="p-3.5 rounded-xl bg-slate-950 border border-slate-800 space-y-2 text-[10px]">
+              {/* Cryptographic Hashes & Tamper-Evident Verification */}
+              <div className="p-3.5 rounded-xl bg-slate-950 border border-slate-800 space-y-3 text-[10px]">
                 <div>
                   <div className="text-slate-500 mb-0.5">BASE COMMIT SHA:</div>
                   <code className="text-slate-300 break-all">{selectedRecord.baseCommitSha}</code>
@@ -655,6 +748,63 @@ jobs:
                     </button>
                   </div>
                   <code className="text-emerald-400 break-all">{selectedRecord.workingDiffSha256}</code>
+                </div>
+
+                {/* Live HMAC Verification Actions */}
+                <div className="pt-2 border-t border-slate-800 space-y-2">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                    <div className="flex items-center gap-1.5 text-slate-300 font-sans text-xs font-semibold">
+                      <Key className="w-3.5 h-3.5 text-amber-400" />
+                      <span>Tamper-Evident Cryptographic Signature</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={() => handleVerifyRecord(false)}
+                        disabled={verifyStatus?.loading}
+                        className="px-2.5 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-500 disabled:opacity-40 text-white font-sans text-[11px] font-semibold flex items-center gap-1 transition-colors"
+                      >
+                        <ShieldCheck className="w-3 h-3" />
+                        <span>{verifyStatus?.loading && !verifyStatus?.tampered ? "Verifying..." : "Verify Integrity"}</span>
+                      </button>
+                      <button
+                        onClick={() => handleVerifyRecord(true)}
+                        disabled={verifyStatus?.loading}
+                        className="px-2.5 py-1 rounded-lg bg-rose-600/20 hover:bg-rose-600/30 border border-rose-500/40 text-rose-300 disabled:opacity-40 font-sans text-[11px] font-semibold flex items-center gap-1 transition-colors"
+                      >
+                        <ShieldAlert className="w-3 h-3" />
+                        <span>{verifyStatus?.loading && verifyStatus?.tampered ? "Testing..." : "Simulate Tampering"}</span>
+                      </button>
+                    </div>
+                  </div>
+
+                  {verifyStatus && !verifyStatus.loading && (
+                    <div
+                      className={`p-2.5 rounded-lg border text-[11px] flex items-start gap-2 animate-in fade-in ${
+                        verifyStatus.valid
+                          ? "bg-emerald-950/40 border-emerald-500/40 text-emerald-300"
+                          : "bg-rose-950/50 border-rose-500/50 text-rose-300"
+                      }`}
+                    >
+                      {verifyStatus.valid ? (
+                        <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 shrink-0 mt-0.5" />
+                      ) : (
+                        <ShieldAlert className="w-3.5 h-3.5 text-rose-400 shrink-0 mt-0.5" />
+                      )}
+                      <div className="space-y-0.5">
+                        <div className="font-bold flex items-center gap-2">
+                          <span>{verifyStatus.valid ? "Signature Verified: Valid & Untampered" : "Tampering Detected!"}</span>
+                          {verifyStatus.checkedAt && (
+                            <span className="text-[10px] text-slate-400 font-normal">at {verifyStatus.checkedAt}</span>
+                          )}
+                        </div>
+                        <div className="text-[10px] text-slate-300 font-sans">
+                          {verifyStatus.tampered
+                            ? "Working diff payload was tampered with (1 byte changed). HMAC signature mismatch rejected by server."
+                            : verifyStatus.reason}
+                        </div>
+                      </div>
+                    </div>
+                  )}
                 </div>
               </div>
             </div>

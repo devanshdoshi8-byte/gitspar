@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import ts from 'typescript';
 import vm from 'node:vm';
 import crypto from 'node:crypto';
+import { signReceiptPayload } from '@/lib/receipt-signer';
 
 export const runtime = 'nodejs';
 
@@ -374,8 +375,19 @@ export async function POST(req: Request) {
       }
     }
 
-    // 6. Cryptographic Diff Fingerprint
+    // 6. Cryptographic Diff Fingerprint & Signed Receipt
     const workingDiffSha256 = crypto.createHash('sha256').update(code).digest('hex');
+    const receiptId = `GS-${workingDiffSha256.slice(0, 4).toUpperCase()}`;
+    const verifiedTimestamp = new Date().toISOString();
+
+    const signedPayload = signReceiptPayload({
+      receiptId,
+      diffSha256: workingDiffSha256,
+      functionName: activeFnName,
+      mode: 'mutation_drill',
+      score: 100,
+      verifiedAt: verifiedTimestamp,
+    });
 
     return NextResponse.json({
       success: true,
@@ -395,14 +407,20 @@ export async function POST(req: Request) {
         transferCheckPassed,
       },
       receipt: {
-        timestamp: new Date().toISOString(),
+        id: receiptId,
+        timestamp: verifiedTimestamp,
         working_diff_sha256: workingDiffSha256,
         function_name: activeFnName,
+        mode: 'mutation_drill',
+        score: 100,
         oracle_input: parsedArgs,
         oracle_expected_output: parsedExpected,
         mutated_line: chosenCandidate?.line ?? null,
         mutated_operator: chosenCandidate?.mutatedOperator ?? null,
         transfer_check_passed: transferCheckPassed,
+        signature: signedPayload.signature,
+        signatureMode: signedPayload.signatureMode,
+        canonicalPayload: signedPayload.canonicalPayload,
       },
     });
   } catch (err: unknown) {

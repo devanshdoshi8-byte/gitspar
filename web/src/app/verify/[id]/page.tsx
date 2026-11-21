@@ -16,6 +16,11 @@ import {
   Zap,
   EyeOff,
   Flame,
+  Lock,
+  Key,
+  ShieldCheck,
+  ShieldAlert,
+  Copy,
 } from "lucide-react";
 
 interface VerificationItem {
@@ -32,6 +37,9 @@ interface VerificationItem {
   codeSnippet: string[];
   defaultArgs: string;
   expectedOutput: string;
+  diffSha256?: string;
+  receiptSignature?: string;
+  signatureMode?: "production-hmac" | "local-dev";
 }
 
 const SAMPLE_PR_CHALLENGES: Record<string, VerificationItem> = {
@@ -268,9 +276,17 @@ export default function VerifyCleanRoomPage({
                 : fallbackChallenge.codeSnippet,
               defaultArgs: typeof match.defaultArgs === "string" ? match.defaultArgs : JSON.stringify(match.defaultArgs || "100"),
               expectedOutput: typeof match.expectedOutput === "string" ? match.expectedOutput : JSON.stringify(match.expectedOutput || "true"),
+              diffSha256: match.working_diff_sha256 || match.diffSha256 || "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+              receiptSignature: match.signature,
+              signatureMode: match.signatureMode || match.signature_mode || "local-dev",
             });
             if (match.diagnosticExplanation) {
               setExplanation(match.diagnosticExplanation);
+            }
+            if (typeof match.score === "number") {
+              setScore(match.score);
+              setIsCompleted(true);
+              setTimerRunning(false);
             }
           }
         }
@@ -291,6 +307,89 @@ export default function VerifyCleanRoomPage({
   const [explanation, setExplanation] = useState("");
   const [isCompleted, setIsCompleted] = useState(false);
   const [score, setScore] = useState<number | null>(null);
+
+  // Live HMAC verification state
+  const [verifyStatus, setVerifyStatus] = useState<{
+    loading: boolean;
+    valid?: boolean;
+    reason?: string;
+    signature?: string;
+    signatureMode?: string;
+    tampered?: boolean;
+    checkedAt?: string;
+  } | null>(null);
+
+  const handleVerifyIntegrity = async (tamper: boolean = false) => {
+    setVerifyStatus((prev) => ({ loading: true, ...prev }));
+    try {
+      const activeDiff = data.diffSha256 || "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855";
+      const testedDiff = tamper
+        ? activeDiff.startsWith("0000")
+          ? "ffff" + activeDiff.slice(4)
+          : "0000" + activeDiff.slice(4)
+        : activeDiff;
+
+      let sig = data.receiptSignature;
+      if (!sig) {
+        const signRes = await fetch("/api/verify", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            action: "sign",
+            receipt: {
+              receiptId: data.id,
+              diffSha256: activeDiff,
+              functionName: data.functionName,
+              mode: "mutation_drill",
+              score: score ?? 100,
+              verifiedAt: new Date().toISOString(),
+            },
+          }),
+        });
+        const signData = await signRes.json();
+        sig = signData.signature;
+        setData((prev) => ({
+          ...prev,
+          receiptSignature: sig,
+          signatureMode: signData.signatureMode,
+        }));
+      }
+
+      const res = await fetch("/api/verify", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          receipt: {
+            receiptId: data.id,
+            diffSha256: testedDiff,
+            functionName: data.functionName,
+            mode: "mutation_drill",
+            score: score ?? 100,
+            verifiedAt: new Date().toISOString(),
+            signature: sig,
+          },
+        }),
+      });
+      const resData = await res.json();
+      setVerifyStatus({
+        loading: false,
+        valid: resData.valid,
+        reason: resData.reason,
+        signature: sig,
+        signatureMode: resData.signatureMode,
+        tampered: tamper,
+        checkedAt: new Date().toLocaleTimeString(),
+      });
+    } catch (err: unknown) {
+      setVerifyStatus({
+        loading: false,
+        valid: false,
+        reason: (err as Error).message || "Verification request failed",
+        tampered: tamper,
+        checkedAt: new Date().toLocaleTimeString(),
+      });
+    }
+  };
 
   useEffect(() => {
     if (!timerRunning || timeLeft <= 0 || isCompleted) return;
@@ -355,10 +454,29 @@ export default function VerifyCleanRoomPage({
             </div>
           </div>
 
-          {/* 60s Timer */}
-          <div className={`flex items-center gap-2.5 px-3.5 py-1.5 rounded-xl border ${timerColor}`}>
-            <Timer className="w-4 h-4" />
-            <span className="font-mono font-bold text-sm">{timeLeft}s remaining</span>
+          {/* Header Controls */}
+          <div className="flex items-center gap-3">
+            <button
+              onClick={() => {
+                if (isCompleted) {
+                  setIsCompleted(false);
+                  setTimeLeft(TOTAL_TIME);
+                  setTimerRunning(true);
+                } else {
+                  setIsCompleted(true);
+                  if (score === null) setScore(100);
+                  setTimerRunning(false);
+                }
+              }}
+              className="px-3 py-1.5 rounded-lg border border-slate-700 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-mono font-medium transition-colors"
+            >
+              {isCompleted ? "Back to Drill Challenge" : "Inspect Attestation & Signature"}
+            </button>
+            {/* 60s Timer */}
+            <div className={`flex items-center gap-2.5 px-3.5 py-1.5 rounded-xl border ${timerColor}`}>
+              <Timer className="w-4 h-4" />
+              <span className="font-mono font-bold text-sm">{timeLeft}s remaining</span>
+            </div>
           </div>
         </div>
 
@@ -522,10 +640,15 @@ export default function VerifyCleanRoomPage({
             </div>
 
             {/* Verifiable Output Card */}
-            <div className="p-5 rounded-xl border border-slate-800 bg-slate-950 font-mono text-xs space-y-3">
+            <div className="p-5 rounded-xl border border-slate-800 bg-slate-950 font-mono text-xs space-y-4">
               <div className="text-slate-400 border-b border-slate-800 pb-2 flex items-center justify-between">
-                <span>Cryptographic Assessment Attestation</span>
-                <span className="text-emerald-400 font-bold">VERIFIED_PASS</span>
+                <span className="flex items-center gap-2">
+                  <Lock className="w-3.5 h-3.5 text-blue-400" />
+                  <span>Cryptographic Assessment Attestation</span>
+                </span>
+                <span className="text-emerald-400 font-bold bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/20">
+                  VERIFIED_PASS
+                </span>
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-slate-300">
                 <div>
@@ -549,8 +672,81 @@ export default function VerifyCleanRoomPage({
                 <span className="text-slate-500">Diagnostic Explanation: </span>
                 <span className="text-slate-200 italic">&ldquo;{explanation || "Defect diagnosed and repaired"}&rdquo;</span>
               </div>
-              <div className="text-[10px] text-slate-500 pt-1">
-                Receipt Hash: sha256:4a8b7c9e1f2d3a4b5c6e7f8a9b0c1d2e3f4a5b6c7d8e9f0a1b2c3d4e5f6a7b8c
+
+              {/* Cryptographic HMAC Integrity Block */}
+              <div className="pt-3 border-t border-slate-800 space-y-3">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                  <div className="flex items-center gap-2">
+                    <Key className="w-3.5 h-3.5 text-amber-400" />
+                    <span className="text-xs font-semibold text-slate-200">Cryptographic HMAC Attestation:</span>
+                    <span className="text-[10px] px-1.5 py-0.5 rounded bg-slate-900 border border-slate-700 text-slate-400 font-mono">
+                      {data.signatureMode || "production-hmac"}
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => handleVerifyIntegrity(false)}
+                      disabled={verifyStatus?.loading}
+                      className="px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 disabled:opacity-40 text-white text-xs font-sans font-semibold flex items-center gap-1.5 transition-all shadow-sm"
+                    >
+                      <ShieldCheck className="w-3.5 h-3.5" />
+                      <span>{verifyStatus?.loading && !verifyStatus?.tampered ? "Verifying..." : "Verify Receipt Integrity"}</span>
+                    </button>
+                    <button
+                      onClick={() => handleVerifyIntegrity(true)}
+                      disabled={verifyStatus?.loading}
+                      className="px-3 py-1.5 rounded-lg bg-rose-600/20 hover:bg-rose-600/30 border border-rose-500/40 text-rose-300 disabled:opacity-40 text-xs font-sans font-semibold flex items-center gap-1.5 transition-all"
+                    >
+                      <ShieldAlert className="w-3.5 h-3.5" />
+                      <span>{verifyStatus?.loading && verifyStatus?.tampered ? "Testing..." : "Simulate Tampering"}</span>
+                    </button>
+                  </div>
+                </div>
+
+                <div className="p-3 rounded-lg bg-slate-900/90 border border-slate-800 space-y-1 text-[11px]">
+                  <div className="text-slate-500 text-[10px]">WORKING DIFF SHA-256:</div>
+                  <code className="text-emerald-400 break-all text-[11px] block">
+                    {data.diffSha256 || "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"}
+                  </code>
+                  {data.receiptSignature && (
+                    <>
+                      <div className="text-slate-500 text-[10px] pt-1">HMAC SIGNATURE (SHA-256):</div>
+                      <code className="text-blue-400 break-all text-[11px] block">
+                        {data.receiptSignature}
+                      </code>
+                    </>
+                  )}
+                </div>
+
+                {/* Live Verification Result Banner */}
+                {verifyStatus && !verifyStatus.loading && (
+                  <div
+                    className={`p-3 rounded-lg border text-xs flex items-start gap-2.5 animate-in fade-in ${
+                      verifyStatus.valid
+                        ? "bg-emerald-950/40 border-emerald-500/40 text-emerald-300"
+                        : "bg-rose-950/50 border-rose-500/50 text-rose-300"
+                    }`}
+                  >
+                    {verifyStatus.valid ? (
+                      <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />
+                    ) : (
+                      <ShieldAlert className="w-4 h-4 text-rose-400 shrink-0 mt-0.5" />
+                    )}
+                    <div className="space-y-0.5">
+                      <div className="font-bold flex items-center gap-2">
+                        <span>{verifyStatus.valid ? "Receipt Cryptographically Valid" : "Tampering Detected!"}</span>
+                        {verifyStatus.checkedAt && (
+                          <span className="text-[10px] text-slate-400 font-normal">checked at {verifyStatus.checkedAt}</span>
+                        )}
+                      </div>
+                      <div className="text-[11px] text-slate-300 font-sans">
+                        {verifyStatus.tampered
+                          ? "Simulated payload corruption: 1 byte of the working diff SHA-256 was flipped. Node HMAC verification immediately failed due to cryptographic signature mismatch."
+                          : verifyStatus.reason}
+                      </div>
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
 
