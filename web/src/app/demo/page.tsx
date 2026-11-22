@@ -30,6 +30,7 @@ import {
   Table,
   CheckSquare,
   Layers,
+  ShieldCheck,
 } from "lucide-react";
 import {
   scoreFunctionCode,
@@ -51,6 +52,8 @@ interface SamplePreset {
   defaultArgs: string;
   defaultExpected: string;
   code: string;
+  diffSha256?: string;
+  riskScore?: number;
 }
 
 const PRESETS: SamplePreset[] = [
@@ -306,6 +309,90 @@ export default function DemoPage() {
     decisions: contractDecisions,
   });
 
+  const [contractSaved, setContractSaved] = useState(false);
+
+  const handleSaveIntentContract = async () => {
+    try {
+      const workingDiffSha256 = currentSample.diffSha256 || "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855";
+      const receiptId = `GS-${Math.floor(1000 + Math.random() * 9000)}`;
+
+      const signRes = await fetch("/api/verify", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "sign",
+          receipt: {
+            receiptId,
+            targetFile: currentSample.file,
+            functionName: currentSample.name,
+            diffSha256: workingDiffSha256,
+            mode: "intent_contract",
+            riskScore: currentSample.riskScore || 75,
+            verifiedAt: new Date().toISOString(),
+            verifiedEdgeCases: contractDecisions.map((d) => ({
+              category: d.probe.category,
+              inputArgs: d.probe.inputArgs,
+              expectedOutput: d.expectedOutput,
+              verdict: d.verdict,
+              explanation: d.intentNote,
+            })),
+          },
+        }),
+      });
+
+      const signData = await signRes.json();
+
+      const contractReceipt = {
+        id: receiptId,
+        contributor: "you (verified)",
+        repo: "local/working-tree",
+        prNumber: 42,
+        assessedFunction: currentSample.name,
+        filePath: currentSample.file,
+        mode: "intent_contract" as const,
+        modeLabel: "Mode A: Mutation Drill" as const,
+        score: 100,
+        riskScore: currentSample.riskScore || 75,
+        elapsedSeconds: 15,
+        baseCommitSha: "HEAD~1",
+        workingDiffSha256,
+        mutatedOperator: "N/A",
+        restoredOperator: "N/A",
+        diagnosticExplanation: "Locked Executable Intent Contract with verified edge cases",
+        verifiedAt: new Date().toISOString(),
+        isRealUser: true,
+        signature: signData.signature,
+        signatureMode: signData.signingMode || "dev-local",
+        in_toto_attestation: signData.envelope,
+        verifiedEdgeCases: contractDecisions.map((d) => ({
+          category: d.probe.category,
+          inputArgs: d.probe.inputArgs,
+          expectedOutput: d.expectedOutput,
+          verdict: d.verdict,
+          explanation: d.intentNote,
+        })),
+      };
+
+      const stored = localStorage.getItem("gitspar_user_receipts");
+      const list = stored ? JSON.parse(stored) : [];
+      localStorage.setItem("gitspar_user_receipts", JSON.stringify([contractReceipt, ...list]));
+
+      fetch("/api/spar", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "save_receipt",
+          receipt: contractReceipt,
+        }),
+      }).catch(() => {});
+
+      setContractSaved(true);
+      setTimeout(() => setContractSaved(false), 4000);
+    } catch (e) {
+      console.warn("Failed to lock intent contract", e);
+    }
+  };
+
   const switchPreset = (index: number) => {
     setActiveTab(index);
     setIsCustomMode(false);
@@ -489,6 +576,7 @@ export default function DemoPage() {
           mode: "mutation_drill" as const,
           modeLabel: "Mode A: Mutation Drill" as const,
           score: 100,
+          riskScore: currentSample.riskScore || 75,
           elapsedSeconds: 22,
           baseCommitSha: "HEAD~1",
           workingDiffSha256: data.receipt?.working_diff_sha256 || "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
@@ -504,6 +592,16 @@ export default function DemoPage() {
           signature: data.receipt?.signature,
           signatureMode: data.receipt?.signatureMode || "local-dev",
           canonicalPayload: data.receipt?.canonicalPayload,
+          in_toto_attestation: data.receipt?.in_toto_attestation,
+          verifiedEdgeCases: [
+            {
+              category: "boundary_threshold",
+              inputArgs: [argsInput],
+              expectedOutput: expectedInput,
+              verdict: "INTENDED" as const,
+              explanation: diagnosticExplanation || "Restored boundary condition",
+            },
+          ],
         };
 
         try {
@@ -1472,30 +1570,57 @@ export default function DemoPage() {
             <h3 className="text-base font-bold text-white">Compiled Executable Contract Artifacts</h3>
           </div>
 
-          {/* Tabs */}
-          <div className="flex items-center gap-1.5 p-1 rounded-xl bg-slate-950 border border-slate-800 text-xs font-medium">
+          {/* Controls & Tabs */}
+          <div className="flex flex-wrap items-center gap-2">
             <button
-              onClick={() => setContractPreviewTab("test")}
-              className={`px-3 py-1.5 rounded-lg transition-all ${
-                contractPreviewTab === "test"
-                  ? "bg-indigo-600 text-white shadow-sm font-semibold"
-                  : "text-slate-400 hover:text-white"
-              }`}
+              onClick={handleSaveIntentContract}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-sans font-semibold transition-all shadow-sm"
             >
-              Vitest Test Suite (.spar.test.ts)
+              {contractSaved ? <Check className="w-3.5 h-3.5 text-white" /> : <ShieldCheck className="w-3.5 h-3.5 text-white" />}
+              <span>{contractSaved ? "Locked & Attested!" : "Lock Contract & Attestation"}</span>
             </button>
-            <button
-              onClick={() => setContractPreviewTab("markdown")}
-              className={`px-3 py-1.5 rounded-lg transition-all ${
-                contractPreviewTab === "markdown"
-                  ? "bg-indigo-600 text-white shadow-sm font-semibold"
-                  : "text-slate-400 hover:text-white"
-              }`}
-            >
-              GitHub PR Contract Table (.md)
-            </button>
+            <div className="flex items-center gap-1.5 p-1 rounded-xl bg-slate-950 border border-slate-800 text-xs font-medium">
+              <button
+                onClick={() => setContractPreviewTab("test")}
+                className={`px-3 py-1.5 rounded-lg transition-all ${
+                  contractPreviewTab === "test"
+                    ? "bg-indigo-600 text-white shadow-sm font-semibold"
+                    : "text-slate-400 hover:text-white"
+                }`}
+              >
+                Vitest Test Suite (.spar.test.ts)
+              </button>
+              <button
+                onClick={() => setContractPreviewTab("markdown")}
+                className={`px-3 py-1.5 rounded-lg transition-all ${
+                  contractPreviewTab === "markdown"
+                    ? "bg-indigo-600 text-white shadow-sm font-semibold"
+                    : "text-slate-400 hover:text-white"
+                }`}
+              >
+                GitHub PR Contract Table (.md)
+              </button>
+            </div>
           </div>
         </div>
+
+        {contractSaved && (
+          <div className="p-3 rounded-xl bg-emerald-950/40 border border-emerald-500/40 text-emerald-300 text-xs flex items-center justify-between animate-in fade-in">
+            <div className="flex items-center gap-2">
+              <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+              <span>
+                Intent Contract verified &amp; in-toto v1 Statement envelope signed. This module is now tracked on the dashboard.
+              </span>
+            </div>
+            <Link
+              href="/dashboard"
+              className="inline-flex items-center gap-1 font-semibold text-emerald-200 underline hover:text-white"
+            >
+              <span>View Dashboard</span>
+              <ArrowRight className="w-3.5 h-3.5" />
+            </Link>
+          </div>
+        )}
 
         {contractPreviewTab === "test" ? (
           <div className="space-y-3">

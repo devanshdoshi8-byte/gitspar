@@ -39,7 +39,7 @@ interface VerificationItem {
   expectedOutput: string;
   diffSha256?: string;
   receiptSignature?: string;
-  signatureMode?: "production-hmac" | "local-dev";
+  signatureMode?: "ci-signed" | "dev-local" | "production-hmac" | "local-dev" | string;
 }
 
 const SAMPLE_PR_CHALLENGES: Record<string, VerificationItem> = {
@@ -219,6 +219,13 @@ const SAMPLE_PR_CHALLENGES: Record<string, VerificationItem> = {
     defaultArgs: "10, 10",
     expectedOutput: "true",
   },
+};
+
+const sanitizeSnippetLine = (line: string): string => {
+  return line
+    .replace(/\/\/.*$/g, "")
+    .replace(/\/\*[\s\S]*?\*\//g, "")
+    .trimEnd();
 };
 
 export default function VerifyCleanRoomPage({
@@ -550,7 +557,7 @@ export default function VerifyCleanRoomPage({
                       }`}
                     >
                       <span className="w-6 text-right select-none text-slate-600 text-[10px]">{lineNum}</span>
-                      <code className="flex-1 font-mono">{line.replace(/\s*\/\/\s*<--.*$/, "")}</code>
+                      <code className="flex-1 font-mono">{sanitizeSnippetLine(line)}</code>
                       {isSelected && <span className="text-[10px] text-blue-400 font-bold uppercase">Selected</span>}
                     </div>
                   );
@@ -673,14 +680,14 @@ export default function VerifyCleanRoomPage({
                 <span className="text-slate-200 italic">&ldquo;{explanation || "Defect diagnosed and repaired"}&rdquo;</span>
               </div>
 
-              {/* Cryptographic HMAC Integrity Block */}
+              {/* in-toto v1 Statement & Ed25519 Attestation Block */}
               <div className="pt-3 border-t border-slate-800 space-y-3">
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                   <div className="flex items-center gap-2">
                     <Key className="w-3.5 h-3.5 text-amber-400" />
-                    <span className="text-xs font-semibold text-slate-200">Cryptographic HMAC Attestation:</span>
+                    <span className="text-xs font-semibold text-slate-200">in-toto v1 Attestation Envelope:</span>
                     <span className="text-[10px] px-1.5 py-0.5 rounded bg-slate-900 border border-slate-700 text-slate-400 font-mono">
-                      {data.signatureMode || "production-hmac"}
+                      {data.signatureMode === "ci-signed" ? "ci-signed (Ed25519)" : "dev-local (Ed25519)"}
                     </span>
                   </div>
                   <div className="flex items-center gap-2">
@@ -690,7 +697,7 @@ export default function VerifyCleanRoomPage({
                       className="px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 disabled:opacity-40 text-white text-xs font-sans font-semibold flex items-center gap-1.5 transition-all shadow-sm"
                     >
                       <ShieldCheck className="w-3.5 h-3.5" />
-                      <span>{verifyStatus?.loading && !verifyStatus?.tampered ? "Verifying..." : "Verify Receipt Integrity"}</span>
+                      <span>{verifyStatus?.loading && !verifyStatus?.tampered ? "Verifying..." : "Verify in-toto Integrity"}</span>
                     </button>
                     <button
                       onClick={() => handleVerifyIntegrity(true)}
@@ -703,14 +710,22 @@ export default function VerifyCleanRoomPage({
                   </div>
                 </div>
 
-                <div className="p-3 rounded-lg bg-slate-900/90 border border-slate-800 space-y-1 text-[11px]">
-                  <div className="text-slate-500 text-[10px]">WORKING DIFF SHA-256:</div>
+                <div className="p-3 rounded-lg bg-slate-900/90 border border-slate-800 space-y-1.5 text-[11px]">
+                  <div className="flex items-center justify-between text-slate-400 text-[10px]">
+                    <span>STATEMENT SCHEMA:</span>
+                    <code className="text-blue-300">https://in-toto.io/Statement/v1</code>
+                  </div>
+                  <div className="flex items-center justify-between text-slate-400 text-[10px]">
+                    <span>PREDICATE TYPE:</span>
+                    <code className="text-purple-300">https://gitspar.dev/attestation/intent-contract/v1</code>
+                  </div>
+                  <div className="text-slate-500 text-[10px] pt-1">SUBJECT DIFF SHA-256:</div>
                   <code className="text-emerald-400 break-all text-[11px] block">
                     {data.diffSha256 || "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"}
                   </code>
                   {data.receiptSignature && (
                     <>
-                      <div className="text-slate-500 text-[10px] pt-1">HMAC SIGNATURE (SHA-256):</div>
+                      <div className="text-slate-500 text-[10px] pt-1">ED25519 SIGNATURE:</div>
                       <code className="text-blue-400 break-all text-[11px] block">
                         {data.receiptSignature}
                       </code>
@@ -734,14 +749,14 @@ export default function VerifyCleanRoomPage({
                     )}
                     <div className="space-y-0.5">
                       <div className="font-bold flex items-center gap-2">
-                        <span>{verifyStatus.valid ? "Receipt Cryptographically Valid" : "Tampering Detected!"}</span>
+                        <span>{verifyStatus.valid ? "in-toto Attestation Cryptographically Valid" : "Tampering Detected!"}</span>
                         {verifyStatus.checkedAt && (
                           <span className="text-[10px] text-slate-400 font-normal">checked at {verifyStatus.checkedAt}</span>
                         )}
                       </div>
                       <div className="text-[11px] text-slate-300 font-sans">
                         {verifyStatus.tampered
-                          ? "Simulated payload corruption: 1 byte of the working diff SHA-256 was flipped. Node HMAC verification immediately failed due to cryptographic signature mismatch."
+                          ? "Simulated payload corruption: 1 byte of the working diff SHA-256 was flipped. Cryptographic Ed25519 attestation signature mismatch rejected by verification engine."
                           : verifyStatus.reason}
                       </div>
                     </div>
@@ -755,7 +770,7 @@ export default function VerifyCleanRoomPage({
                 href="/dashboard"
                 className="flex-1 py-2.5 px-4 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-semibold text-xs sm:text-sm flex items-center justify-center gap-2"
               >
-                <span>View Global Reviewer Leaderboard</span>
+                <span>View Module Agent Debt Coverage</span>
                 <ArrowRight className="w-4 h-4" />
               </Link>
               <Link

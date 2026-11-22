@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import ts from 'typescript';
 import vm from 'node:vm';
 import crypto from 'node:crypto';
-import { signReceiptPayload } from '@/lib/receipt-signer';
+import { signReceiptPayload, createInTotoStatement, signAttestationEnvelope } from '@/lib/receipt-signer';
 
 export const runtime = 'nodejs';
 
@@ -380,6 +380,30 @@ export async function POST(req: Request) {
     const receiptId = `GS-${workingDiffSha256.slice(0, 4).toUpperCase()}`;
     const verifiedTimestamp = new Date().toISOString();
 
+    const inTotoStatement = createInTotoStatement({
+      receiptId,
+      targetFile: 'examples/checkoutDiscount.ts',
+      functionName: activeFnName,
+      workingDiffSha256,
+      mode: 'mutation_drill',
+      riskScore: 100,
+      timestamp: verifiedTimestamp,
+      diagnosedLine: chosenCandidate?.line ?? null,
+      repairedOperator: chosenCandidate?.mutatedOperator ?? null,
+      explanation: userExplanation || 'Mutant killed via boundary verification.',
+      verifiedEdgeCases: [
+        {
+          category: 'boundary_threshold',
+          inputArgs: parsedArgs,
+          expectedOutput: parsedExpected,
+          verdict: 'INTENDED',
+          explanation: 'Mutant killed on boundary condition',
+        },
+      ],
+    });
+
+    const attestation = signAttestationEnvelope(inTotoStatement);
+
     const signedPayload = signReceiptPayload({
       receiptId,
       diffSha256: workingDiffSha256,
@@ -421,6 +445,7 @@ export async function POST(req: Request) {
         signature: signedPayload.signature,
         signatureMode: signedPayload.signatureMode,
         canonicalPayload: signedPayload.canonicalPayload,
+        in_toto_attestation: attestation.envelope,
       },
     });
   } catch (err: unknown) {

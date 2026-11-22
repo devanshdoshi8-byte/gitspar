@@ -469,7 +469,7 @@ export default function LandingPage() {
               className="flex items-center gap-2 px-6 py-3 rounded-xl border border-slate-700 bg-slate-900/80 hover:bg-slate-800 text-slate-200 font-semibold transition-all text-sm"
             >
               <Gauge className="w-4 h-4 text-emerald-400" />
-              <span>Reviewer Leaderboard</span>
+              <span>Module Coverage Dashboard</span>
             </Link>
           </div>
         </div>

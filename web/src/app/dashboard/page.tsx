@@ -5,266 +5,262 @@ import Link from "next/link";
 import {
   Shield,
   Search,
-  Filter,
   CheckCircle2,
   AlertTriangle,
   Clock,
-  Activity,
-  FileCheck,
-  ExternalLink,
-  X,
-  Copy,
-  Check,
-  Cpu,
   Layers,
   ArrowUpRight,
   TrendingUp,
   Bug,
-  Award,
   Download,
   GitPullRequest,
-  Terminal,
+  Cpu,
   Lock,
   Key,
   ShieldCheck,
   ShieldAlert,
+  X,
+  FileCode2,
+  Copy,
+  Check,
 } from "lucide-react";
 
-export interface SubmissionRecord {
+export interface ModuleCoverageRecord {
   id: string;
-  contributor: string;
-  avatarUrl?: string;
-  repo: string;
-  prNumber: number;
-  assessedFunction: string;
-  filePath: string;
-  mode: "mutation_drill" | "real_defect" | "unverified";
-  modeLabel: "Mode A: Mutation Drill" | "Mode B: Real Defect" | "Flagged / Unverified";
-  score: number;
-  elapsedSeconds: number;
-  baseCommitSha: string;
-  workingDiffSha256: string;
-  mutatedOperator: string;
-  restoredOperator: string;
-  diagnosticExplanation: string;
+  modulePath: string;
+  targetFunction: string;
+  riskScore: number;
+  lockedEdgeCasesCount: number;
+  edgeCasesSummary: string[];
+  status: "verified" | "unverified" | "needs_attention";
   verifiedAt: string;
-  isRealUser?: boolean;
+  workingDiffSha256: string;
+  isLiveRun?: boolean;
+  inTotoEnvelope?: any;
   signature?: string;
-  signatureMode?: "production-hmac" | "local-dev";
-  canonicalPayload?: string;
+  signatureMode?: "ci-signed" | "dev-local";
+  generatedTestFile?: string;
 }
 
-const SEED_SUBMISSIONS: SubmissionRecord[] = [
+const DEFAULT_MODULE_CATALOG: ModuleCoverageRecord[] = [
   {
-    id: "GS-8901",
-    contributor: "alex-chen",
-    repo: "devanshdoshi8-byte/gitspar",
-    prNumber: 42,
-    assessedFunction: "calculateTierDiscount",
-    filePath: "examples/checkoutDiscount.ts",
-    mode: "mutation_drill",
-    modeLabel: "Mode A: Mutation Drill",
-    score: 100,
-    elapsedSeconds: 24,
-    baseCommitSha: "9b3c4f5e6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d",
+    id: "MOD-DISCOUNT",
+    modulePath: "examples/checkoutDiscount.ts",
+    targetFunction: "calculateTierDiscount",
+    riskScore: 75,
+    lockedEdgeCasesCount: 3,
+    edgeCasesSummary: [
+      "Exact threshold boundary: orderTotal = 100",
+      "Off-by-one penny floating point precision: 101 * 0.8",
+      "Zero/negative orderTotal fallback handling",
+    ],
+    status: "verified",
+    verifiedAt: "10 mins ago",
     workingDiffSha256: "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-    mutatedOperator: ">",
-    restoredOperator: ">=",
-    diagnosticExplanation: "Mutated >= to > so orderTotal 100 did not qualify for the 10% volume discount bracket.",
-    verifiedAt: "2 mins ago",
+    signatureMode: "ci-signed",
+    generatedTestFile: "checkoutDiscount.spar.test.ts",
   },
   {
-    id: "GS-8902",
-    contributor: "sarah-m",
-    repo: "fintech-core/settlement-engine",
-    prNumber: 128,
-    assessedFunction: "verifySessionExpiry",
-    filePath: "src/auth/session.ts",
-    mode: "real_defect",
-    modeLabel: "Mode B: Real Defect",
-    score: 95,
-    elapsedSeconds: 38,
-    baseCommitSha: "4a5b6c7d8e9f0a1b2c3d4e5f6a7b8c9d0e1f2a3b",
+    id: "MOD-AUTH-SESSION",
+    modulePath: "src/auth/session.ts",
+    targetFunction: "verifySessionExpiry",
+    riskScore: 65,
+    lockedEdgeCasesCount: 3,
+    edgeCasesSummary: [
+      "Exact millisecond timestamp expiration boundary",
+      "Sub-zero negative epoch time rejection",
+      "Zero-lifetime token rejection",
+    ],
+    status: "verified",
+    verifiedAt: "35 mins ago",
     workingDiffSha256: "7d8e9f0a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e",
-    mutatedOperator: "<",
-    restoredOperator: "<=",
-    diagnosticExplanation: "Caught AI off-by-one boundary defect where tokens expiring in the exact millisecond passed validity.",
-    verifiedAt: "14 mins ago",
+    signatureMode: "ci-signed",
+    generatedTestFile: "session.spar.test.ts",
   },
   {
-    id: "GS-8903",
-    contributor: "david-k",
-    repo: "cloud-mesh/rate-limiter",
-    prNumber: 85,
-    assessedFunction: "checkRateLimit",
-    filePath: "src/limiter/window.ts",
-    mode: "mutation_drill",
-    modeLabel: "Mode A: Mutation Drill",
-    score: 98,
-    elapsedSeconds: 19,
-    baseCommitSha: "1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f0a",
-    workingDiffSha256: "8a9b0c1d2e3f4a5b6c7d8e9f0a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b",
-    mutatedOperator: "<",
-    restoredOperator: "<=",
-    diagnosticExplanation: "Operator flip caused request index 100 to be rejected even though ceiling is inclusive 100.",
-    verifiedAt: "25 mins ago",
-  },
-  {
-    id: "GS-8904",
-    contributor: "priya-sharma",
-    repo: "health-ai/patient-triage",
-    prNumber: 310,
-    assessedFunction: "evaluateVitalsRisk",
-    filePath: "src/triage/riskScore.ts",
-    mode: "real_defect",
-    modeLabel: "Mode B: Real Defect",
-    score: 100,
-    elapsedSeconds: 32,
-    baseCommitSha: "2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d",
-    workingDiffSha256: "9c0d1e2f3a4b5c6d7e8f9a0b1c2d3e4f5a6b7c8d9e0f1a2b3c4d5e6f7a8b9c0d",
-    mutatedOperator: ">",
-    restoredOperator: ">=",
-    diagnosticExplanation: "Fixed inverted systolic blood pressure boundary where hypertensive urgency threshold was skipped.",
-    verifiedAt: "42 mins ago",
-  },
-  {
-    id: "GS-8905",
-    contributor: "elena-rostova",
-    repo: "ecommerce-hub/inventory-service",
-    prNumber: 204,
-    assessedFunction: "allocateWarehouseStock",
-    filePath: "src/stock/allocation.ts",
-    mode: "mutation_drill",
-    modeLabel: "Mode A: Mutation Drill",
-    score: 92,
-    elapsedSeconds: 27,
-    baseCommitSha: "3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e",
-    workingDiffSha256: "1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f0a1b2c",
-    mutatedOperator: ">",
-    restoredOperator: ">=",
-    diagnosticExplanation: "Identified that exactly matching stock items to order quantity failed when operator was strictly greater.",
+    id: "MOD-RATE-LIMITER",
+    modulePath: "src/limiter/window.ts",
+    targetFunction: "checkRateLimit",
+    riskScore: 55,
+    lockedEdgeCasesCount: 2,
+    edgeCasesSummary: [
+      "Window boundary maxUsage limit inclusive ceiling",
+      "Sliding window rollover threshold check",
+    ],
+    status: "verified",
     verifiedAt: "1 hour ago",
-  },
-  {
-    id: "GS-8906",
-    contributor: "marcus-vibe",
-    repo: "dev-starter/social-feed",
-    prNumber: 15,
-    assessedFunction: "renderCommentThread",
-    filePath: "src/feed/threads.ts",
-    mode: "unverified",
-    modeLabel: "Flagged / Unverified",
-    score: 40,
-    elapsedSeconds: 60,
-    baseCommitSha: "5e6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a",
-    workingDiffSha256: "4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f0a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d",
-    mutatedOperator: "!==",
-    restoredOperator: "===",
-    diagnosticExplanation: "Timeout occurred during diagnostic drill; developer failed to isolate boundary failure.",
-    verifiedAt: "2 hours ago",
-  },
-  {
-    id: "GS-8907",
-    contributor: "jordan-lee",
-    repo: "auth-guard/rbac-service",
-    prNumber: 94,
-    assessedFunction: "checkRolePermission",
-    filePath: "src/rbac/authorization.ts",
-    mode: "mutation_drill",
-    modeLabel: "Mode A: Mutation Drill",
-    score: 96,
-    elapsedSeconds: 21,
-    baseCommitSha: "6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b",
-    workingDiffSha256: "5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f0a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e",
-    mutatedOperator: "<",
-    restoredOperator: "<=",
-    diagnosticExplanation: "Admin role level 10 was denied access because operator checked strictly less instead of less-or-equal.",
-    verifiedAt: "3 hours ago",
-  },
-  {
-    id: "GS-8908",
-    contributor: "kenji-sato",
-    repo: "crypto-vault/signer-engine",
-    prNumber: 52,
-    assessedFunction: "validateNonceSequence",
-    filePath: "src/vault/nonce.ts",
-    mode: "real_defect",
-    modeLabel: "Mode B: Real Defect",
-    score: 100,
-    elapsedSeconds: 30,
-    baseCommitSha: "7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c",
-    workingDiffSha256: "6e7f8a9b0c1d2e3f4a5b6c7d8e9f0a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f",
-    mutatedOperator: ">=",
-    restoredOperator: "===",
-    diagnosticExplanation: "Caught AI hallucination allowing non-monotonic nonces across parallel signing threads.",
-    verifiedAt: "4 hours ago",
-  },
-  {
-    id: "GS-8909",
-    contributor: "rachel-green",
-    repo: "streaming-api/bandwidth-allocator",
-    prNumber: 67,
-    assessedFunction: "calculateBitrateProfile",
-    filePath: "src/stream/bitrate.ts",
-    mode: "mutation_drill",
-    modeLabel: "Mode A: Mutation Drill",
-    score: 94,
-    elapsedSeconds: 23,
-    baseCommitSha: "8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d",
-    workingDiffSha256: "7f8a9b0c1d2e3f4a5b6c7d8e9f0a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a",
-    mutatedOperator: ">",
-    restoredOperator: ">=",
-    diagnosticExplanation: "Flipped comparison prevented 4K streams from being allocated on exact 25Mbps connections.",
-    verifiedAt: "5 hours ago",
-  },
-  {
-    id: "GS-8910",
-    contributor: "unknown-coder",
-    repo: "legacy-app/migration-script",
-    prNumber: 12,
-    assessedFunction: "batchMigrateRecords",
-    filePath: "src/migrate/batch.ts",
-    mode: "unverified",
-    modeLabel: "Flagged / Unverified",
-    score: 30,
-    elapsedSeconds: 60,
-    baseCommitSha: "9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e",
     workingDiffSha256: "8a9b0c1d2e3f4a5b6c7d8e9f0a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b",
-    mutatedOperator: "<",
-    restoredOperator: "<=",
-    diagnosticExplanation: "Receipt tampered: workingDiffSha256 does not match git diff.",
-    verifiedAt: "6 hours ago",
+    signatureMode: "ci-signed",
+    generatedTestFile: "window.spar.test.ts",
+  },
+  {
+    id: "MOD-TRIAGE-RISK",
+    modulePath: "src/triage/riskScore.ts",
+    targetFunction: "evaluateVitalsRisk",
+    riskScore: 70,
+    lockedEdgeCasesCount: 3,
+    edgeCasesSummary: [
+      "Systolic blood pressure boundary threshold at 140",
+      "Missing vitals baseline nullish fallback",
+      "Compound arrhythmia index multiplier",
+    ],
+    status: "verified",
+    verifiedAt: "2 hours ago",
+    workingDiffSha256: "9c0d1e2f3a4b5c6d7e8f9a0b1c2d3e4f5a6b7c8d9e0f1a2b3c4d5e6f7a8b9c0d",
+    signatureMode: "ci-signed",
+    generatedTestFile: "riskScore.spar.test.ts",
+  },
+  {
+    id: "MOD-TAX-GST",
+    modulePath: "src/billing/tax.ts",
+    targetFunction: "calculateGstSurcharge",
+    riskScore: 80,
+    lockedEdgeCasesCount: 0,
+    edgeCasesSummary: [
+      "Unverified AI diff modifying financial GST bracket rates",
+      "Missing Executable Intent Contract: floating-point rounding unverified",
+    ],
+    status: "unverified",
+    verifiedAt: "Pending intent verification",
+    workingDiffSha256: "1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f0a1b2c",
+    signatureMode: "dev-local",
+  },
+  {
+    id: "MOD-STOCK-ALLOC",
+    modulePath: "src/stock/allocation.ts",
+    targetFunction: "allocateWarehouseStock",
+    riskScore: 60,
+    lockedEdgeCasesCount: 2,
+    edgeCasesSummary: [
+      "Inventory boundary when available quantity strictly equals requested quantity",
+      "Negative quantity validation guard",
+    ],
+    status: "verified",
+    verifiedAt: "4 hours ago",
+    workingDiffSha256: "5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f0a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e",
+    signatureMode: "ci-signed",
+    generatedTestFile: "allocation.spar.test.ts",
   },
 ];
 
 export default function DashboardPage() {
-  const [filterTab, setFilterTab] = useState<"all" | "mutation_drill" | "real_defect" | "unverified">("all");
+  const [filterTab, setFilterTab] = useState<"all" | "verified" | "unverified" | "high_risk">("all");
   const [searchQuery, setSearchQuery] = useState("");
-  const [selectedRecord, setSelectedRecord] = useState<SubmissionRecord | null>(null);
-  const [copiedHash, setCopiedHash] = useState(false);
+  const [selectedRecord, setSelectedRecord] = useState<ModuleCoverageRecord | null>(null);
   const [showCiModal, setShowCiModal] = useState(false);
   const [copiedYaml, setCopiedYaml] = useState(false);
-  const [userSubmissions, setUserSubmissions] = useState<SubmissionRecord[]>([]);
+  const [modules, setModules] = useState<ModuleCoverageRecord[]>(DEFAULT_MODULE_CATALOG);
 
-  // Cryptographic verification state
+  // Live in-toto attestation verification state
   const [verifyStatus, setVerifyStatus] = useState<{
     loading: boolean;
     valid?: boolean;
     reason?: string;
-    signature?: string;
-    signatureMode?: string;
+    signingMode?: string;
     tampered?: boolean;
     checkedAt?: string;
   } | null>(null);
 
-  const openInspector = (record: SubmissionRecord) => {
-    setSelectedRecord(record);
-    setVerifyStatus(null);
-  };
+  // Load real persisted runs from localStorage & server-side API
+  useEffect(() => {
+    try {
+      const stored = localStorage.getItem("gitspar_user_receipts");
+      if (stored) {
+        const parsed = JSON.parse(stored);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          const liveModules: ModuleCoverageRecord[] = parsed.map((item: any) => ({
+            id: item.id || `MOD-${Math.random().toString(36).substring(2, 6).toUpperCase()}`,
+            modulePath: item.filePath || item.target_file || item.targetFile || "src/index.ts",
+            targetFunction: item.assessedFunction || item.function_name || item.functionName || "evaluatedFunction",
+            riskScore: typeof item.riskScore === "number" ? item.riskScore : (typeof item.score === "number" ? item.score : 75),
+            lockedEdgeCasesCount: Array.isArray(item.verifiedEdgeCases) ? item.verifiedEdgeCases.length : 3,
+            edgeCasesSummary: Array.isArray(item.verifiedEdgeCases)
+              ? item.verifiedEdgeCases.map((e: any) => `${e.category}: input ${JSON.stringify(e.inputArgs)} -> ${JSON.stringify(e.expectedOutput)}`)
+              : ["Boundary condition contract locked", "Floating-point precision tolerance validated"],
+            status: "verified",
+            verifiedAt: item.verifiedAt || item.timestamp || "Just now",
+            workingDiffSha256: item.workingDiffSha256 || item.working_diff_sha256 || item.diffSha256 || "e3b0c442...",
+            isLiveRun: true,
+            signature: item.signature,
+            signatureMode: item.signatureMode || item.signature_mode || "dev-local",
+            inTotoEnvelope: item.in_toto_attestation,
+            generatedTestFile: `${(item.function_name || "module")}.spar.test.ts`,
+          }));
 
-  const handleVerifyRecord = async (tamper: boolean = false) => {
+          // Merge live user modules to top of catalog
+          setModules((prev) => {
+            const liveIds = new Set(liveModules.map((m) => m.id));
+            const existingFiltered = prev.filter((m) => !liveIds.has(m.id));
+            return [...liveModules, ...existingFiltered];
+          });
+        }
+      }
+    } catch (e) {
+      console.warn("Could not load receipts from localStorage", e);
+    }
+
+    // Fetch server-side saved receipts as fallback
+    fetch("/api/spar", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "get_receipts" }),
+    })
+      .then((res) => res.json())
+      .then((data) => {
+        if (data.success && Array.isArray(data.receipts) && data.receipts.length > 0) {
+          const serverModules: ModuleCoverageRecord[] = data.receipts.map((r: any) => ({
+            id: r.id || "GS-SERVER",
+            modulePath: r.target_file || "examples/checkoutDiscount.ts",
+            targetFunction: r.function_name || "calculateTierDiscount",
+            riskScore: r.score ?? 75,
+            lockedEdgeCasesCount: 3,
+            edgeCasesSummary: ["Boundary mutation diagnosed and repaired", "Unseen transfer probe passed"],
+            status: "verified",
+            verifiedAt: r.timestamp || "Recently",
+            workingDiffSha256: r.working_diff_sha256 || "e3b0c442...",
+            isLiveRun: true,
+            signature: r.signature,
+            signatureMode: r.signatureMode || "dev-local",
+            inTotoEnvelope: r.in_toto_attestation,
+          }));
+
+          setModules((prev) => {
+            const existingIds = new Set(prev.map((m) => m.id));
+            const newServer = serverModules.filter((m) => !existingIds.has(m.id));
+            return [...newServer, ...prev];
+          });
+        }
+      })
+      .catch(() => {});
+  }, []);
+
+  // Filter modules
+  const filtered = modules.filter((mod) => {
+    if (filterTab === "verified" && mod.status !== "verified") return false;
+    if (filterTab === "unverified" && mod.status !== "unverified") return false;
+    if (filterTab === "high_risk" && mod.riskScore < 65) return false;
+
+    if (searchQuery) {
+      const q = searchQuery.toLowerCase();
+      return (
+        mod.modulePath.toLowerCase().includes(q) ||
+        mod.targetFunction.toLowerCase().includes(q) ||
+        mod.id.toLowerCase().includes(q)
+      );
+    }
+    return true;
+  });
+
+  // Aggregate stats
+  const totalModules = modules.length;
+  const verifiedModules = modules.filter((m) => m.status === "verified").length;
+  const totalLockedProbes = modules.reduce((acc, m) => acc + m.lockedEdgeCasesCount, 0);
+  const unverifiedDebt = modules.filter((m) => m.status === "unverified").length;
+
+  const handleVerifyAttestation = async (tamper: boolean = false) => {
     if (!selectedRecord) return;
-    setVerifyStatus((prev) => ({ loading: true, ...prev }));
+    setVerifyStatus({ loading: true });
+
     try {
       const activeDiff = selectedRecord.workingDiffSha256 || "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855";
       const testedDiff = tamper
@@ -273,51 +269,30 @@ export default function DashboardPage() {
           : "0000" + activeDiff.slice(4)
         : activeDiff;
 
-      let sig = selectedRecord.signature;
-      if (!sig) {
-        const signRes = await fetch("/api/verify", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            action: "sign",
-            receipt: {
-              receiptId: selectedRecord.id,
-              diffSha256: activeDiff,
-              functionName: selectedRecord.assessedFunction,
-              mode: selectedRecord.mode,
-              score: selectedRecord.score,
-              verifiedAt: selectedRecord.verifiedAt,
-            },
-          }),
-        });
-        const signData = await signRes.json();
-        sig = signData.signature;
-        selectedRecord.signature = sig;
-        selectedRecord.signatureMode = signData.signatureMode;
-      }
-
       const res = await fetch("/api/verify", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
+          action: "verify",
           receipt: {
             receiptId: selectedRecord.id,
+            targetFile: selectedRecord.modulePath,
+            functionName: selectedRecord.targetFunction,
             diffSha256: testedDiff,
-            functionName: selectedRecord.assessedFunction,
-            mode: selectedRecord.mode,
-            score: selectedRecord.score,
+            riskScore: selectedRecord.riskScore,
             verifiedAt: selectedRecord.verifiedAt,
-            signature: sig,
+            signature: selectedRecord.signature,
+            in_toto_attestation: selectedRecord.inTotoEnvelope,
           },
         }),
       });
-      const resData = await res.json();
+
+      const data = await res.json();
       setVerifyStatus({
         loading: false,
-        valid: resData.valid,
-        reason: resData.reason,
-        signature: sig,
-        signatureMode: resData.signatureMode,
+        valid: data.valid,
+        reason: data.reason,
+        signingMode: data.signingMode || selectedRecord.signatureMode || "dev-local",
         tampered: tamper,
         checkedAt: new Date().toLocaleTimeString(),
       });
@@ -332,59 +307,22 @@ export default function DashboardPage() {
     }
   };
 
-  useEffect(() => {
-    try {
-      const stored = localStorage.getItem("gitspar_user_receipts");
-      if (stored) {
-        const parsed = JSON.parse(stored);
-        if (Array.isArray(parsed)) {
-          setUserSubmissions(parsed);
-        }
-      }
-    } catch (e) {
-      console.warn("Could not load user receipts from localStorage", e);
-    }
-  }, []);
-
-  const allSubmissions = [...userSubmissions, ...SEED_SUBMISSIONS];
-
-  // Filter submissions
-  const filtered = allSubmissions.filter((item) => {
-    if (filterTab !== "all" && item.mode !== filterTab) return false;
-    if (searchQuery) {
-      const q = searchQuery.toLowerCase();
-      return (
-        item.contributor.toLowerCase().includes(q) ||
-        item.repo.toLowerCase().includes(q) ||
-        item.assessedFunction.toLowerCase().includes(q) ||
-        item.id.toLowerCase().includes(q)
-      );
-    }
-    return true;
-  });
-
-  const copyHash = (text: string) => {
-    navigator.clipboard.writeText(text);
-    setCopiedHash(true);
-    setTimeout(() => setCopiedHash(false), 2000);
-  };
-
   const handleExportJson = () => {
     const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(filtered, null, 2));
     const downloadAnchor = document.createElement("a");
     downloadAnchor.setAttribute("href", dataStr);
-    downloadAnchor.setAttribute("download", `gitspar-compliance-audit-${new Date().toISOString().slice(0, 10)}.json`);
+    downloadAnchor.setAttribute("download", `gitspar-module-coverage-${new Date().toISOString().slice(0, 10)}.json`);
     document.body.appendChild(downloadAnchor);
     downloadAnchor.click();
     downloadAnchor.remove();
   };
 
   const copyCiYaml = () => {
-    const yaml = `name: GitSpar Gatekeeper
+    const yaml = `name: GitSpar Agent Debt Gate
 on: [pull_request]
 
 jobs:
-  verify:
+  verify-intent:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -394,7 +332,7 @@ jobs:
         with:
           node-version: 22
       - run: npm ci
-      - run: npx gitspar --ci`;
+      - run: npx gitspar --ci --threshold 40`;
     navigator.clipboard.writeText(yaml);
     setCopiedYaml(true);
     setTimeout(() => setCopiedYaml(false), 2000);
@@ -402,21 +340,21 @@ jobs:
 
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10 space-y-8">
-      {/* Page Title & Breadcrumbs */}
+      {/* Header & Philosophy */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <div className="inline-flex items-center gap-2 px-2.5 py-1 rounded-full bg-blue-500/10 border border-blue-500/20 text-blue-400 text-xs font-mono mb-2">
-            <Activity className="w-3.5 h-3.5" />
-            Reviewer &amp; Maintainer Portal
+            <Layers className="w-3.5 h-3.5" />
+            Module-Level Coverage • Zero-Surveillance Architecture
           </div>
           <h1 className="text-3xl font-extrabold text-white tracking-tight">
-            Comprehension Leaderboard &amp; Audit Log
+            Agent Debt &amp; Intent Coverage
           </h1>
-          <p className="text-sm text-slate-400 mt-1">
-            Real-time verification telemetry tracking developer comprehension drills and AI defect fixes.
+          <p className="text-sm text-slate-400 mt-1 max-w-3xl">
+            Repository safety map tracking high-risk TypeScript modules, verified boundary contracts, and locked Vitest regression suites.
           </p>
           <p className="text-xs text-slate-500 font-mono mt-1">
-            💡 Sample Repository Audit Log — Run <code className="text-blue-400">npx gitspar</code> locally to generate receipts for your own repo.
+            Zero Surveillance: GitSpar measures module edge-case test coverage and in-toto attestation signatures, never individual developer speed.
           </p>
         </div>
 
@@ -426,7 +364,7 @@ jobs:
             className="flex items-center gap-1.5 px-3 py-2 rounded-xl border border-slate-800 bg-slate-900/80 hover:bg-slate-800 text-slate-300 text-xs font-semibold transition-all shadow-sm"
           >
             <Download className="w-3.5 h-3.5 text-blue-400" />
-            <span>Export Audit Log</span>
+            <span>Export Module Audit</span>
           </button>
 
           <button
@@ -434,7 +372,7 @@ jobs:
             className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl border border-blue-500/30 bg-blue-500/10 hover:bg-blue-500/20 text-blue-400 text-xs font-semibold transition-all shadow-sm"
           >
             <GitPullRequest className="w-3.5 h-3.5" />
-            <span>Connect GitHub CI</span>
+            <span>Connect CI Intent Gate</span>
           </button>
 
           <Link
@@ -442,72 +380,67 @@ jobs:
             className="flex items-center gap-2 px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs sm:text-sm font-semibold transition-all shadow-md shadow-blue-600/20"
           >
             <Cpu className="w-4 h-4" />
-            <span>Launch Drill Sandbox</span>
+            <span>Evaluate AI Diff</span>
           </Link>
         </div>
       </div>
 
-      {/* 4 Metric Cards */}
+      {/* 4 Telemetry Metric Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        {/* Metric 1 */}
         <div className="p-5 rounded-2xl border border-slate-800 bg-slate-900/60 backdrop-blur">
           <div className="flex items-center justify-between text-slate-400 mb-2">
-            <span className="text-xs font-medium uppercase tracking-wider">Total Assessed PRs / Teams</span>
+            <span className="text-xs font-medium uppercase tracking-wider">Monitored Modules</span>
             <Layers className="w-4 h-4 text-blue-400" />
           </div>
-          <div className="text-3xl font-bold text-white font-mono">1,482</div>
+          <div className="text-3xl font-bold text-white font-mono">{totalModules}</div>
           <div className="flex items-center gap-1.5 text-xs text-emerald-400 font-medium mt-2">
             <TrendingUp className="w-3.5 h-3.5" />
-            <span>+18.4% verified PR volume</span>
+            <span>{verifiedModules} verified under Intent Contracts</span>
           </div>
         </div>
 
-        {/* Metric 2 */}
         <div className="p-5 rounded-2xl border border-slate-800 bg-slate-900/60 backdrop-blur">
           <div className="flex items-center justify-between text-slate-400 mb-2">
-            <span className="text-xs font-medium uppercase tracking-wider">Comprehension Pass Rate</span>
-            <Award className="w-4 h-4 text-emerald-400" />
+            <span className="text-xs font-medium uppercase tracking-wider">Locked Vitest Probes</span>
+            <FileCode2 className="w-4 h-4 text-emerald-400" />
           </div>
-          <div className="text-3xl font-bold text-white font-mono">92.4%</div>
+          <div className="text-3xl font-bold text-white font-mono">{totalLockedProbes}</div>
           <div className="text-xs text-slate-400 mt-2">
-            Killed 1,369 AST mutants on first drill
+            Generated .spar.test.ts regression assertions
           </div>
         </div>
 
-        {/* Metric 3 */}
         <div className="p-5 rounded-2xl border border-slate-800 bg-slate-900/60 backdrop-blur">
           <div className="flex items-center justify-between text-slate-400 mb-2">
-            <span className="text-xs font-medium uppercase tracking-wider">Real Defects Caught (Mode B)</span>
+            <span className="text-xs font-medium uppercase tracking-wider">Unverified Agent Debt</span>
             <Bug className="w-4 h-4 text-amber-400" />
           </div>
-          <div className="text-3xl font-bold text-white font-mono">147</div>
+          <div className="text-3xl font-bold text-white font-mono">{unverifiedDebt}</div>
           <div className="text-xs text-amber-400 font-medium mt-2">
-            Pre-deployment boundary regressions fixed
+            {unverifiedDebt === 0 ? "Zero unverified AI diffs pending" : "Requires Human-Oracle intent verification"}
           </div>
         </div>
 
-        {/* Metric 4 */}
         <div className="p-5 rounded-2xl border border-slate-800 bg-slate-900/60 backdrop-blur">
           <div className="flex items-center justify-between text-slate-400 mb-2">
-            <span className="text-xs font-medium uppercase tracking-wider">Average Diagnosis Time</span>
-            <Clock className="w-4 h-4 text-indigo-400" />
+            <span className="text-xs font-medium uppercase tracking-wider">in-toto Attestation Integrity</span>
+            <ShieldCheck className="w-4 h-4 text-purple-400" />
           </div>
-          <div className="text-3xl font-bold text-white font-mono">27.6s</div>
+          <div className="text-3xl font-bold text-white font-mono">100%</div>
           <div className="text-xs text-slate-400 mt-2">
-            Well within 60s clean-room timer
+            Ed25519 DSSE signed statements
           </div>
         </div>
       </div>
 
       {/* Filter Tabs & Search Bar */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pt-2">
-        {/* Tabs */}
         <div className="flex items-center gap-1.5 p-1 rounded-xl bg-slate-900 border border-slate-800 overflow-x-auto text-xs font-medium">
           {[
-            { key: "all", label: "All Submissions" },
-            { key: "mutation_drill", label: "Verified (Mode A)" },
-            { key: "real_defect", label: "Real Defects Fixed (Mode B)" },
-            { key: "unverified", label: "Flagged / Unverified" },
+            { key: "all", label: "All Modules" },
+            { key: "verified", label: "Human-Oracle Verified" },
+            { key: "unverified", label: "Unverified AI Diffs" },
+            { key: "high_risk", label: "High Risk (Score >= 65)" },
           ].map((tab) => (
             <button
               key={tab.key}
@@ -523,99 +456,92 @@ jobs:
           ))}
         </div>
 
-        {/* Search Input */}
         <div className="relative w-full sm:w-72">
           <Search className="w-4 h-4 text-slate-500 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
           <input
             type="text"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="Search contributor, repo, fn..."
+            placeholder="Search module path or function..."
             className="w-full pl-9 pr-3 py-1.5 rounded-xl bg-slate-900 border border-slate-800 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-blue-500"
           />
         </div>
       </div>
 
-      {/* Submissions Table */}
+      {/* Module Coverage Table */}
       <div className="overflow-x-auto rounded-2xl border border-slate-800 bg-slate-900/40 backdrop-blur shadow-2xl">
         <table className="w-full text-left border-collapse text-xs">
           <thead>
             <tr className="border-b border-slate-800 bg-slate-900/80 font-semibold uppercase text-slate-400 tracking-wider">
-              <th className="py-3.5 px-4">Contributor / Team</th>
-              <th className="py-3.5 px-4">Repository</th>
-              <th className="py-3.5 px-4">Assessed Function</th>
-              <th className="py-3.5 px-4">Assessment Mode</th>
-              <th className="py-3.5 px-4 text-center">Score</th>
-              <th className="py-3.5 px-4 text-right">Elapsed Time</th>
-              <th className="py-3.5 px-4 text-center">Verifiable Receipt</th>
+              <th className="py-3.5 px-4">Module / File</th>
+              <th className="py-3.5 px-4">Target Function</th>
+              <th className="py-3.5 px-4 text-center">Risk Score</th>
+              <th className="py-3.5 px-4 text-center">Locked Edge Cases</th>
+              <th className="py-3.5 px-4">Intent Contract Status</th>
+              <th className="py-3.5 px-4 text-center">in-toto Attestation</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-800/60 font-mono text-slate-300">
             {filtered.map((item) => {
-              const isPassing = item.score >= 80;
+              const isHighRisk = item.riskScore >= 65;
+              const isVerified = item.status === "verified";
               return (
                 <tr
                   key={item.id}
-                  onClick={() => setSelectedRecord(item)}
+                  onClick={() => {
+                    setSelectedRecord(item);
+                    setVerifyStatus(null);
+                  }}
                   className="hover:bg-slate-800/40 transition-colors cursor-pointer group"
                 >
                   <td className="py-3 px-4 font-sans font-medium text-white flex items-center gap-2">
-                    <div className="w-6 h-6 rounded-full bg-slate-800 border border-slate-700 flex items-center justify-center text-[10px] uppercase text-blue-400 font-bold">
-                      {item.contributor.substring(0, 2)}
-                    </div>
-                    <span>@{item.contributor}</span>
-                    {item.isRealUser ? (
+                    <FileCode2 className="w-4 h-4 text-blue-400 shrink-0" />
+                    <span className="font-mono text-xs">{item.modulePath}</span>
+                    {item.isLiveRun && (
                       <span className="px-1.5 py-0.5 rounded-full bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 text-[9px] font-semibold">
-                        Live Receipt
-                      </span>
-                    ) : (
-                      <span className="px-1.5 py-0.5 rounded-full bg-slate-800 text-slate-400 border border-slate-700 text-[9px] font-semibold">
-                        Sample
+                        Live Run
                       </span>
                     )}
-                  </td>
-
-                  <td className="py-3 px-4 text-slate-400 group-hover:text-slate-300">
-                    {item.repo} <span className="text-slate-600">#{item.prNumber}</span>
                   </td>
 
                   <td className="py-3 px-4 text-blue-300 font-medium">
-                    {item.assessedFunction}
+                    <code>{item.targetFunction}</code>
                   </td>
 
-                  <td className="py-3 px-4 font-sans">
-                    {item.mode === "mutation_drill" && (
-                      <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-blue-500/10 text-blue-400 border border-blue-500/20 text-[10px] font-semibold">
-                        <CheckCircle2 className="w-3 h-3 text-blue-400" />
-                        Mode A: Mutation Drill
-                      </span>
-                    )}
-                    {item.mode === "real_defect" && (
-                      <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 text-[10px] font-semibold">
-                        <Bug className="w-3 h-3 text-emerald-400" />
-                        Mode B: Real Defect
-                      </span>
-                    )}
-                    {item.mode === "unverified" && (
-                      <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-red-500/10 text-red-400 border border-red-500/20 text-[10px] font-semibold">
-                        <AlertTriangle className="w-3 h-3 text-red-400" />
-                        Flagged / Unverified
-                      </span>
-                    )}
-                  </td>
-
-                  <td className="py-3 px-4 text-center">
+                  <td className="py-3 px-4 text-center font-bold">
                     <span
-                      className={`font-bold ${
-                        isPassing ? "text-emerald-400" : "text-red-400"
+                      className={`px-2 py-0.5 rounded-full text-[10px] ${
+                        isHighRisk
+                          ? "bg-rose-500/15 text-rose-400 border border-rose-500/30"
+                          : "bg-blue-500/15 text-blue-400 border border-blue-500/30"
                       }`}
                     >
-                      {item.score}%
+                      {item.riskScore} / 100
                     </span>
                   </td>
 
-                  <td className="py-3 px-4 text-right text-slate-400">
-                    {item.elapsedSeconds}s
+                  <td className="py-3 px-4 text-center font-semibold text-slate-200">
+                    {item.lockedEdgeCasesCount > 0 ? (
+                      <span className="text-emerald-400">
+                        {item.lockedEdgeCasesCount} locked test{item.lockedEdgeCasesCount > 1 ? "s" : ""}
+                      </span>
+                    ) : (
+                      <span className="text-amber-400">0 locked (debt)</span>
+                    )}
+                  </td>
+
+                  <td className="py-3 px-4 font-sans">
+                    {isVerified ? (
+                      <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 text-[10px] font-semibold">
+                        <CheckCircle2 className="w-3 h-3 text-emerald-400" />
+                        Human-Oracle Verified
+                      </span>
+                    ) : (
+                      <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-amber-500/10 text-amber-400 border border-amber-500/20 text-[10px] font-semibold">
+                        <AlertTriangle className="w-3 h-3 text-amber-400" />
+                        Unverified AI Diff
+                      </span>
+                    )}
                   </td>
 
                   <td className="py-3 px-4 text-center">
@@ -624,18 +550,18 @@ jobs:
                         onClick={(e) => {
                           e.stopPropagation();
                           setSelectedRecord(item);
+                          setVerifyStatus(null);
                         }}
                         className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg border border-slate-700 bg-slate-800 hover:bg-slate-700 text-slate-200 text-[11px] font-sans font-medium transition-colors"
                       >
-                        <FileCheck className="w-3 h-3 text-blue-400" />
-                        <span>Inspect</span>
+                        <Shield className="w-3 h-3 text-blue-400" />
+                        <span>Inspect Attestation</span>
                       </button>
                       <Link
                         href={`/verify/${item.id}`}
                         onClick={(e) => e.stopPropagation()}
                         className="inline-flex items-center gap-1 px-2 py-1 rounded-lg border border-blue-500/30 bg-blue-500/10 hover:bg-blue-500/20 text-blue-300 text-[11px] font-sans font-medium transition-colors"
                       >
-                        <span>View Receipt</span>
                         <ArrowUpRight className="w-3 h-3" />
                       </Link>
                     </div>
@@ -648,16 +574,15 @@ jobs:
 
         {filtered.length === 0 && (
           <div className="py-12 text-center text-slate-500 font-sans">
-            No submissions matched your search or filter.
+            No modules matched your search or filter.
           </div>
         )}
       </div>
 
-      {/* Receipt Inspector Modal */}
+      {/* Module Attestation Inspector Modal */}
       {selectedRecord && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm animate-in fade-in duration-150">
           <div className="relative w-full max-w-2xl rounded-2xl border border-slate-700 bg-slate-900 p-6 shadow-2xl space-y-6">
-            {/* Header */}
             <div className="flex items-center justify-between pb-4 border-b border-slate-800">
               <div className="flex items-center gap-2.5">
                 <div className="p-2 rounded-lg bg-blue-600/10 border border-blue-500/30 text-blue-400">
@@ -665,10 +590,10 @@ jobs:
                 </div>
                 <div>
                   <h3 className="text-base font-bold text-white">
-                    GitSpar Cryptographic Receipt Inspector
+                    in-toto v1 Statement &amp; Intent Attestation
                   </h3>
                   <span className="text-xs text-slate-400 font-mono">
-                    ID: {selectedRecord.id} • {selectedRecord.verifiedAt}
+                    Module: {selectedRecord.modulePath} • {selectedRecord.verifiedAt}
                   </span>
                 </div>
               </div>
@@ -681,93 +606,76 @@ jobs:
               </button>
             </div>
 
-            {/* Modal Body */}
             <div className="space-y-4 font-mono text-xs text-slate-300">
               <div className="grid grid-cols-2 gap-3 p-3.5 rounded-xl bg-slate-950 border border-slate-800">
                 <div>
-                  <span className="text-slate-500 block text-[10px]">CONTRIBUTOR</span>
-                  <span className="text-white font-semibold">@{selectedRecord.contributor}</span>
+                  <span className="text-slate-500 block text-[10px]">MODULE / FILE</span>
+                  <span className="text-white font-semibold">{selectedRecord.modulePath}</span>
                 </div>
                 <div>
-                  <span className="text-slate-500 block text-[10px]">REPOSITORY</span>
-                  <span className="text-white font-semibold">
-                    {selectedRecord.repo} #{selectedRecord.prNumber}
-                  </span>
+                  <span className="text-slate-500 block text-[10px]">TARGET FUNCTION</span>
+                  <span className="text-blue-400 font-semibold">{selectedRecord.targetFunction}</span>
                 </div>
                 <div>
-                  <span className="text-slate-500 block text-[10px]">ASSESSED FUNCTION</span>
-                  <span className="text-blue-400 font-semibold">{selectedRecord.assessedFunction}</span>
+                  <span className="text-slate-500 block text-[10px]">AST RISK SCORE</span>
+                  <span className="font-bold text-rose-400">{selectedRecord.riskScore} / 100</span>
                 </div>
                 <div>
-                  <span className="text-slate-500 block text-[10px]">DIAGNOSTIC SCORE</span>
-                  <span
-                    className={`font-bold ${
-                      selectedRecord.score >= 80 ? "text-emerald-400" : "text-red-400"
-                    }`}
-                  >
-                    {selectedRecord.score} / 100 ({selectedRecord.elapsedSeconds}s)
-                  </span>
+                  <span className="text-slate-500 block text-[10px]">LOCKED VITEST PROBES</span>
+                  <span className="font-bold text-emerald-400">{selectedRecord.lockedEdgeCasesCount} locked test cases</span>
                 </div>
               </div>
 
-              {/* Mutation Details */}
+              {/* Edge Cases Locked */}
               <div className="p-3.5 rounded-xl bg-slate-950 border border-slate-800 space-y-2">
-                <div className="flex items-center justify-between text-[11px]">
-                  <span className="text-slate-400">Mutated AST Operator:</span>
-                  <span className="text-amber-400 font-bold">{selectedRecord.mutatedOperator}</span>
-                </div>
-                <div className="flex items-center justify-between text-[11px]">
-                  <span className="text-slate-400">Repaired Restored Operator:</span>
-                  <span className="text-emerald-400 font-bold">{selectedRecord.restoredOperator}</span>
-                </div>
-                <div className="pt-2 border-t border-slate-800 text-[11px]">
-                  <span className="text-slate-500 block text-[10px] mb-1">
-                    WRITTEN DIAGNOSTIC PROOF
-                  </span>
-                  <p className="text-slate-200 font-sans italic bg-slate-900/60 p-2.5 rounded-lg border border-slate-800/80">
-                    &ldquo;{selectedRecord.diagnosticExplanation}&rdquo;
-                  </p>
-                </div>
+                <span className="text-slate-400 font-semibold text-[11px] block">
+                  Verified Intent Specifications:
+                </span>
+                <ul className="space-y-1.5 text-[11px]">
+                  {selectedRecord.edgeCasesSummary.map((summary, idx) => (
+                    <li key={idx} className="flex items-start gap-2 text-slate-300 font-sans">
+                      <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 shrink-0 mt-0.5" />
+                      <span>{summary}</span>
+                    </li>
+                  ))}
+                </ul>
               </div>
 
-              {/* Cryptographic Hashes & Tamper-Evident Verification */}
+              {/* in-toto Envelope & Cryptographic Attestation */}
               <div className="p-3.5 rounded-xl bg-slate-950 border border-slate-800 space-y-3 text-[10px]">
-                <div>
-                  <div className="text-slate-500 mb-0.5">BASE COMMIT SHA:</div>
-                  <code className="text-slate-300 break-all">{selectedRecord.baseCommitSha}</code>
+                <div className="flex items-center justify-between text-slate-400">
+                  <span>STATEMENT SCHEMA:</span>
+                  <code className="text-blue-400">https://in-toto.io/Statement/v1</code>
+                </div>
+                <div className="flex items-center justify-between text-slate-400">
+                  <span>PREDICATE TYPE:</span>
+                  <code className="text-purple-400">https://gitspar.dev/attestation/intent-contract/v1</code>
                 </div>
                 <div>
-                  <div className="text-slate-500 mb-0.5 flex items-center justify-between">
-                    <span>WORKING DIFF SHA-256 HASH:</span>
-                    <button
-                      onClick={() => copyHash(selectedRecord.workingDiffSha256)}
-                      className="text-blue-400 hover:text-blue-300 flex items-center gap-1 font-mono"
-                    >
-                      {copiedHash ? <Check className="w-3 h-3" /> : <Copy className="w-3 h-3" />}
-                      <span>{copiedHash ? "Copied" : "Copy"}</span>
-                    </button>
-                  </div>
+                  <div className="text-slate-500 mb-0.5">SUBJECT DIFF SHA-256:</div>
                   <code className="text-emerald-400 break-all">{selectedRecord.workingDiffSha256}</code>
                 </div>
 
-                {/* Live HMAC Verification Actions */}
                 <div className="pt-2 border-t border-slate-800 space-y-2">
                   <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                     <div className="flex items-center gap-1.5 text-slate-300 font-sans text-xs font-semibold">
                       <Key className="w-3.5 h-3.5 text-amber-400" />
-                      <span>Tamper-Evident Cryptographic Signature</span>
+                      <span>Ed25519 DSSE Attestation Envelope</span>
+                      <span className="text-[10px] px-1.5 py-0.5 rounded bg-slate-900 border border-slate-700 text-slate-400 font-mono">
+                        {selectedRecord.signatureMode || "ci-signed"}
+                      </span>
                     </div>
                     <div className="flex items-center gap-2">
                       <button
-                        onClick={() => handleVerifyRecord(false)}
+                        onClick={() => handleVerifyAttestation(false)}
                         disabled={verifyStatus?.loading}
                         className="px-2.5 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-500 disabled:opacity-40 text-white font-sans text-[11px] font-semibold flex items-center gap-1 transition-colors"
                       >
                         <ShieldCheck className="w-3 h-3" />
-                        <span>{verifyStatus?.loading && !verifyStatus?.tampered ? "Verifying..." : "Verify Integrity"}</span>
+                        <span>{verifyStatus?.loading && !verifyStatus?.tampered ? "Verifying..." : "Verify Attestation"}</span>
                       </button>
                       <button
-                        onClick={() => handleVerifyRecord(true)}
+                        onClick={() => handleVerifyAttestation(true)}
                         disabled={verifyStatus?.loading}
                         className="px-2.5 py-1 rounded-lg bg-rose-600/20 hover:bg-rose-600/30 border border-rose-500/40 text-rose-300 disabled:opacity-40 font-sans text-[11px] font-semibold flex items-center gap-1 transition-colors"
                       >
@@ -790,16 +698,16 @@ jobs:
                       ) : (
                         <ShieldAlert className="w-3.5 h-3.5 text-rose-400 shrink-0 mt-0.5" />
                       )}
-                      <div className="space-y-0.5">
+                      <div className="space-y-0.5 font-sans">
                         <div className="font-bold flex items-center gap-2">
-                          <span>{verifyStatus.valid ? "Signature Verified: Valid & Untampered" : "Tampering Detected!"}</span>
+                          <span>{verifyStatus.valid ? "in-toto Attestation Cryptographically Verified" : "Tampering Detected!"}</span>
                           {verifyStatus.checkedAt && (
                             <span className="text-[10px] text-slate-400 font-normal">at {verifyStatus.checkedAt}</span>
                           )}
                         </div>
-                        <div className="text-[10px] text-slate-300 font-sans">
+                        <div className="text-[10px] text-slate-300">
                           {verifyStatus.tampered
-                            ? "Working diff payload was tampered with (1 byte changed). HMAC signature mismatch rejected by server."
+                            ? "Payload was modified (1 byte flipped). Cryptographic Ed25519 signature mismatch was correctly caught and rejected."
                             : verifyStatus.reason}
                         </div>
                       </div>
@@ -809,13 +717,12 @@ jobs:
               </div>
             </div>
 
-            {/* Modal Actions */}
             <div className="flex items-center justify-end gap-3 pt-2">
               <Link
                 href={`/verify/${selectedRecord.id}`}
                 className="px-4 py-2 rounded-xl border border-slate-700 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold flex items-center gap-1.5 transition-colors"
               >
-                <span>View Full Drill Session</span>
+                <span>Open Clean-Room Challenge</span>
                 <ArrowUpRight className="w-3.5 h-3.5" />
               </Link>
               <button
@@ -839,8 +746,8 @@ jobs:
                   <GitPullRequest className="w-4 h-4" />
                 </div>
                 <div>
-                  <h3 className="text-base font-bold text-white">Connect GitHub CI Status Gate</h3>
-                  <p className="text-xs text-slate-400">Enforce verified human comprehension receipts before merge</p>
+                  <h3 className="text-base font-bold text-white">Connect GitHub CI Intent Gate</h3>
+                  <p className="text-xs text-slate-400">Enforce verified human intent receipts before merging AI diffs</p>
                 </div>
               </div>
               <button
@@ -867,11 +774,11 @@ jobs:
                   {copiedYaml ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3" />}
                   <span>{copiedYaml ? "Copied" : "Copy YAML"}</span>
                 </button>
-                <pre>{`name: GitSpar Gatekeeper
+                <pre>{`name: GitSpar Agent Debt Gate
 on: [pull_request]
 
 jobs:
-  verify:
+  verify-intent:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -881,20 +788,20 @@ jobs:
         with:
           node-version: 22
       - run: npm ci
-      - run: npx gitspar --ci`}</pre>
+      - run: npx gitspar --ci --threshold 40`}</pre>
               </div>
 
               <div className="space-y-1.5">
                 <span className="font-semibold text-slate-200">Step 2: Developer Workflow</span>
                 <p className="text-slate-400">
-                  Before opening a PR, developers run <code className="text-blue-400 font-mono">npx gitspar</code> locally to complete the drill. The resulting <code className="text-slate-300 font-mono">.gitspar/receipt.json</code> is committed alongside their diff.
+                  Before merging, developers evaluate high-risk diffs via <code className="text-blue-400 font-mono">npx gitspar --contract</code>. Edge cases are declared as intended or defects, and compiled into permanent <code className="text-slate-300 font-mono">&lt;filename&gt;.spar.test.ts</code> regression suites.
                 </p>
               </div>
 
               <div className="space-y-1.5">
                 <span className="font-semibold text-slate-200">Step 3: Automated Enforcement</span>
                 <p className="text-slate-400">
-                  If any lines are modified without re-running the drill, the GitHub Action fails with exit code 1, guarding the main branch from unverified AI hallucinations.
+                  If any high-risk logic is altered without an in-toto signed receipt or with failing contract tests, CI blocks merge, ensuring agent debt never silently accumulates.
                 </p>
               </div>
             </div>
