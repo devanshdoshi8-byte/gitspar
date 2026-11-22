@@ -11,6 +11,7 @@ import {
   computeDiffHashForTarget,
 } from './git.js';
 import { discoverEligibleFunctions, createBoundaryMutant, EligibleFunction, MutationResult } from './ast.js';
+import { scoreFunctionRisk, FunctionRiskResult } from './risk-scorer.js';
 import { runIsolatedVitestCheck } from './runner.js';
 import { saveReceipt, AssessmentReceipt } from './receipt.js';
 import { loadGitSparConfig } from './config.js';
@@ -193,17 +194,42 @@ async function promptValidJson<T>(
  * Non-Interactive / CI Mode Checker.
  * Verifies that uncommitted or PR changes have a corresponding valid GitSpar receipt.
  */
-export async function runCiCheck(cwd: string = process.cwd()): Promise<number> {
+export async function runCiCheck(cwd: string = process.cwd(), customThreshold?: number): Promise<number> {
   console.log(`\n${bold}${cyan}╔═══════════════════════════════════════════════════════════════════╗${reset}`);
   console.log(`${bold}${cyan}║                      GitSpar (v0.3.0)                             ║${reset}`);
   console.log(`${bold}${cyan}║                   CI / Non-Interactive Check                      ║${reset}`);
   console.log(`${bold}${cyan}╚═══════════════════════════════════════════════════════════════════╝${reset}\n`);
+
+  let threshold = customThreshold ?? 40;
+  const thresholdIdx = process.argv.indexOf('--threshold');
+  if (thresholdIdx !== -1 && process.argv[thresholdIdx + 1]) {
+    const parsed = parseInt(process.argv[thresholdIdx + 1], 10);
+    if (!isNaN(parsed)) threshold = parsed;
+  }
 
   const config = loadGitSparConfig(cwd);
   const baseRef = resolveBaseRef(cwd, config?.baseBranch);
   const receiptPath = resolve(cwd, '.gitspar/receipt.json');
 
   if (!existsSync(receiptPath)) {
+    // Check if all changed functions are below the risk threshold
+    try {
+      const repoCtx = getRepoContext(cwd);
+      const changedEligible: EligibleFunction[] = [];
+      for (const f of repoCtx.changedFiles) {
+        changedEligible.push(...discoverEligibleFunctions(f));
+      }
+      const highRisk = changedEligible.filter(
+        (fn) => scoreFunctionRisk(fn.filePath, fn.functionName).riskScore >= threshold
+      );
+      if (changedEligible.length > 0 && highRisk.length === 0) {
+        console.log(
+          `${bold}${green}✅ GitSpar CI Auto-Pass: All changed functions scored below risk threshold (${threshold}). Trivial changes verified.${reset}\n`
+        );
+        return 0;
+      }
+    } catch {}
+
     console.error(
       `${red}❌ GitSpar Check Failed: Working tree has unverified changes. Run \`npx gitspar\` locally to verify your changes before pushing.${reset}\n`
     );
@@ -346,6 +372,39 @@ export async function runCli(): Promise<void> {
     } else {
       console.log(`\nAuto-selected: ${cyan}${selectedFunction.functionName}${reset}`);
     }
+
+    // Parse --threshold flag (default: 40)
+    let threshold = 40;
+    const thresholdIdx = process.argv.indexOf('--threshold');
+    if (thresholdIdx !== -1 && process.argv[thresholdIdx + 1]) {
+      const parsed = parseInt(process.argv[thresholdIdx + 1], 10);
+      if (!isNaN(parsed)) threshold = parsed;
+    }
+
+    // Risk-Weighted Scoring Check
+    const risk = scoreFunctionRisk(selectedFunction.filePath, selectedFunction.functionName);
+    console.log(`\n${bold}Risk Assessment for ${cyan}${selectedFunction.functionName}${reset}:`);
+    const scoreColor = risk.riskScore >= 70 ? red : risk.riskScore >= 40 ? yellow : green;
+    console.log(`  Risk Score: ${scoreColor}${risk.riskScore}/100${reset} (Threshold: ${threshold})`);
+    if (risk.reasons.length > 0) {
+      console.log(`  Identified Risk Factors:`);
+      for (const reason of risk.reasons) {
+        console.log(`   ${dim}•${reset} ${reason}`);
+      }
+    }
+
+    // Auto-pass if risk is below threshold
+    if (risk.riskScore < threshold) {
+      console.log(
+        `\n${bold}${green}✨ Low-risk change detected (${risk.riskScore} < threshold ${threshold}). Auto-passing verification drill silently.${reset}\n`
+      );
+      prompt.close();
+      return;
+    }
+
+    console.log(
+      `\n${yellow}⚠️ High-risk logic detected (${risk.riskScore} >= threshold ${threshold}). Launching 45-second GitSpar verification drill...${reset}`
+    );
 
     // Explicit User Execution Approval (Rule 3)
     const approval = (

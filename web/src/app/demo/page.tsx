@@ -22,7 +22,16 @@ import {
   Sparkles,
   HelpCircle,
   CheckCheck,
+  Github,
+  Search,
+  ExternalLink,
+  ShieldAlert,
 } from "lucide-react";
+import {
+  scoreFunctionCode,
+  parseExportedFunctionsFromSource,
+  FunctionRiskResult,
+} from "@/lib/risk-scorer";
 
 interface SamplePreset {
   name: string;
@@ -143,6 +152,77 @@ export default function DemoPage() {
   const [transferVerified, setTransferVerified] = useState<boolean | null>(null);
   const [repairError, setRepairError] = useState<string | null>(null);
   const [copiedReceipt, setCopiedReceipt] = useState<boolean>(false);
+
+  // Client-Side GitHub URL Scanner State
+  const [showGithubScanner, setShowGithubScanner] = useState<boolean>(false);
+  const [githubUrl, setGithubUrl] = useState<string>(
+    "https://github.com/devanshdoshi8-byte/gitspar/blob/master/examples/checkoutDiscount.ts"
+  );
+  const [isScanningGithub, setIsScanningGithub] = useState<boolean>(false);
+  const [githubScanError, setGithubScanError] = useState<string | null>(null);
+  const [scannedFunctions, setScannedFunctions] = useState<FunctionRiskResult[]>([]);
+  const [selectedScannedFn, setSelectedScannedFn] = useState<FunctionRiskResult | null>(null);
+
+  const convertGitHubUrlToRaw = (url: string): string => {
+    const trimmed = url.trim();
+    if (trimmed.includes("raw.githubusercontent.com")) return trimmed;
+    const match = trimmed.match(/^https?:\/\/github\.com\/([^/]+)\/([^/]+)\/blob\/([^/]+)\/(.+)$/);
+    if (match) {
+      const [, owner, repo, ref, path] = match;
+      return `https://raw.githubusercontent.com/${owner}/${repo}/${ref}/${path}`;
+    }
+    return trimmed;
+  };
+
+  const handleScanGithubFile = async () => {
+    if (!githubUrl.trim()) return;
+    setIsScanningGithub(true);
+    setGithubScanError(null);
+    setScannedFunctions([]);
+
+    try {
+      const rawUrl = convertGitHubUrlToRaw(githubUrl);
+      const res = await fetch(rawUrl);
+      if (!res.ok) {
+        throw new Error(
+          `Failed to fetch file (HTTP ${res.status}). Verify the repository is public and the file path is correct.`
+        );
+      }
+      const sourceText = await res.text();
+      if (!sourceText.trim()) {
+        throw new Error("The fetched file is empty.");
+      }
+
+      let parsed = parseExportedFunctionsFromSource(sourceText);
+      if (parsed.length === 0) {
+        parsed = [scoreFunctionCode(sourceText, "scannedModule")];
+      }
+
+      parsed.sort((a, b) => b.riskScore - a.riskScore);
+      setScannedFunctions(parsed);
+
+      const highestRisk = parsed[0];
+      setSelectedScannedFn(highestRisk);
+      setCustomCode(highestRisk.code);
+      setIsCustomMode(true);
+      setArgsInput(highestRisk.defaultArgs || "100, false");
+      setExpectedInput(highestRisk.defaultExpected || "90");
+      resetDrill();
+    } catch (err: unknown) {
+      setGithubScanError((err as Error).message || "Failed to scan GitHub URL.");
+    } finally {
+      setIsScanningGithub(false);
+    }
+  };
+
+  const launchChallengeOnScannedFn = (fn: FunctionRiskResult) => {
+    setSelectedScannedFn(fn);
+    setCustomCode(fn.code);
+    setIsCustomMode(true);
+    setArgsInput(fn.defaultArgs || "100, false");
+    setExpectedInput(fn.defaultExpected || "90");
+    resetDrill();
+  };
 
   const switchPreset = (index: number) => {
     setActiveTab(index);
@@ -438,14 +518,17 @@ export default function DemoPage() {
           </p>
         </div>
 
-        {/* Preset Selector & Custom Mode Toggle */}
+        {/* Preset Selector & Custom Mode Toggle & GitHub Scanner Tab */}
         <div className="flex flex-wrap items-center gap-2 bg-slate-900 p-1.5 rounded-xl border border-slate-800">
           {PRESETS.map((p, idx) => (
             <button
               key={p.name}
-              onClick={() => switchPreset(idx)}
+              onClick={() => {
+                setShowGithubScanner(false);
+                switchPreset(idx);
+              }}
               className={`px-3 py-1.5 rounded-lg text-xs font-mono font-medium transition-all ${
-                !isCustomMode && activeTab === idx
+                !isCustomMode && !showGithubScanner && activeTab === idx
                   ? "bg-blue-600 text-white shadow-sm"
                   : "text-slate-400 hover:text-white"
               }`}
@@ -455,19 +538,223 @@ export default function DemoPage() {
           ))}
           <button
             onClick={() => {
+              setShowGithubScanner(false);
               setIsCustomMode(true);
               resetDrill();
             }}
             className={`px-3 py-1.5 rounded-lg text-xs font-mono font-medium transition-all ${
-              isCustomMode
+              isCustomMode && !showGithubScanner
                 ? "bg-indigo-600 text-white shadow-sm"
                 : "text-slate-400 hover:text-white"
             }`}
           >
             ✏️ Custom Code
           </button>
+          <button
+            onClick={() => {
+              setShowGithubScanner(true);
+              if (scannedFunctions.length === 0) {
+                handleScanGithubFile();
+              }
+            }}
+            className={`px-3 py-1.5 rounded-lg text-xs font-sans font-semibold flex items-center gap-1.5 transition-all ${
+              showGithubScanner
+                ? "bg-emerald-600 text-white shadow-sm"
+                : "text-emerald-400 hover:text-white bg-emerald-500/10 border border-emerald-500/20"
+            }`}
+          >
+            <Github className="w-3.5 h-3.5" />
+            <span>Scan Any Public GitHub File</span>
+          </button>
         </div>
       </div>
+
+      {/* GitHub URL Scanner Section */}
+      {showGithubScanner && (
+        <div className="my-6 p-5 sm:p-6 rounded-2xl border border-emerald-500/30 bg-slate-900/80 backdrop-blur space-y-5 animate-in fade-in duration-150">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-800 pb-4">
+            <div className="flex items-center gap-2.5">
+              <div className="p-2 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-400">
+                <Github className="w-5 h-5" />
+              </div>
+              <div>
+                <h3 className="text-base font-bold text-white flex items-center gap-2">
+                  <span>Client-Side Public GitHub File Scanner</span>
+                  <span className="text-[10px] font-mono font-medium px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
+                    Rs 0 Server Bandwidth
+                  </span>
+                </h3>
+                <p className="text-xs text-slate-400">
+                  Fetches any public TypeScript blob directly in your browser, scores each function’s defect risk, and launches the live verification drill.
+                </p>
+              </div>
+            </div>
+            <button
+              onClick={() => setShowGithubScanner(false)}
+              className="text-xs text-slate-400 hover:text-slate-200 font-mono"
+            >
+              Close Scanner ✕
+            </button>
+          </div>
+
+          {/* URL Input Bar */}
+          <div className="flex flex-col sm:flex-row items-center gap-2.5">
+            <div className="relative flex-1 w-full">
+              <Search className="w-4 h-4 text-slate-500 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+              <input
+                type="text"
+                value={githubUrl}
+                onChange={(e) => setGithubUrl(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") handleScanGithubFile();
+                }}
+                placeholder="https://github.com/owner/repo/blob/main/path/file.ts"
+                className="w-full pl-9 pr-4 py-2.5 rounded-xl bg-slate-950 border border-slate-800 text-xs font-mono text-white placeholder-slate-500 focus:outline-none focus:border-emerald-500 transition-all"
+              />
+            </div>
+            <button
+              onClick={handleScanGithubFile}
+              disabled={isScanningGithub || !githubUrl.trim()}
+              className="w-full sm:w-auto px-5 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 disabled:opacity-40 text-white font-semibold text-xs flex items-center justify-center gap-2 transition-all shadow-lg shadow-emerald-600/20"
+            >
+              {isScanningGithub ? (
+                <>
+                  <div className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                  <span>Fetching Source...</span>
+                </>
+              ) : (
+                <>
+                  <Search className="w-3.5 h-3.5" />
+                  <span>Scan & Score Functions</span>
+                </>
+              )}
+            </button>
+          </div>
+
+          {/* Quick preset links */}
+          <div className="flex flex-wrap items-center gap-2 text-[11px] text-slate-400">
+            <span className="text-slate-500">Quick Test URLs:</span>
+            {[
+              {
+                label: "checkoutDiscount.ts (GitSpar)",
+                url: "https://github.com/devanshdoshi8-byte/gitspar/blob/master/examples/checkoutDiscount.ts",
+              },
+              {
+                label: "riskScore.ts (Health AI)",
+                url: "https://raw.githubusercontent.com/devanshdoshi8-byte/gitspar/master/examples/checkoutDiscount.ts",
+              },
+            ].map((preset) => (
+              <button
+                key={preset.label}
+                onClick={() => {
+                  setGithubUrl(preset.url);
+                  setTimeout(() => handleScanGithubFile(), 50);
+                }}
+                className="px-2 py-0.5 rounded bg-slate-950 hover:bg-slate-800 text-slate-300 border border-slate-800 transition-colors font-mono"
+              >
+                {preset.label}
+              </button>
+            ))}
+          </div>
+
+          {/* Error message */}
+          {githubScanError && (
+            <div className="p-3 rounded-xl bg-rose-950/40 border border-rose-500/40 text-rose-300 text-xs flex items-center gap-2">
+              <AlertTriangle className="w-4 h-4 text-rose-400 shrink-0" />
+              <span>{githubScanError}</span>
+            </div>
+          )}
+
+          {/* Scanned functions list */}
+          {scannedFunctions.length > 0 && (
+            <div className="space-y-3 pt-2 border-t border-slate-800">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-semibold text-slate-200">
+                  Discovered Exported Functions ({scannedFunctions.length}) — Ranked by Risk:
+                </span>
+                {selectedScannedFn && (
+                  <span className="text-[11px] font-mono text-emerald-400">
+                    Active: <code className="font-bold">{selectedScannedFn.functionName}</code> ({selectedScannedFn.riskScore}/100)
+                  </span>
+                )}
+              </div>
+
+              <div className="grid grid-cols-1 gap-3">
+                {scannedFunctions.map((fn, idx) => {
+                  const isSelected = selectedScannedFn?.functionName === fn.functionName;
+                  const isHigh = fn.riskScore >= 70;
+                  const isMedium = fn.riskScore >= 40 && fn.riskScore < 70;
+                  return (
+                    <div
+                      key={fn.functionName + idx}
+                      className={`p-4 rounded-xl border transition-all ${
+                        isSelected
+                          ? "bg-slate-950 border-emerald-500/60 ring-1 ring-emerald-500/30"
+                          : "bg-slate-950/60 border-slate-800/80 hover:border-slate-700"
+                      }`}
+                    >
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                        <div className="space-y-1">
+                          <div className="flex items-center gap-2">
+                            <span className="font-mono text-sm font-bold text-white">
+                              {fn.functionName}
+                            </span>
+                            <span
+                              className={`text-[10px] font-mono font-bold px-2 py-0.5 rounded border ${
+                                isHigh
+                                  ? "bg-rose-500/10 text-rose-400 border-rose-500/30"
+                                  : isMedium
+                                  ? "bg-amber-500/10 text-amber-400 border-amber-500/30"
+                                  : "bg-emerald-500/10 text-emerald-400 border-emerald-500/30"
+                              }`}
+                            >
+                              Risk Score: {fn.riskScore}/100 {isHigh ? "(HIGH RISK)" : isMedium ? "(MODERATE)" : "(LOW)"}
+                            </span>
+                            {idx === 0 && (
+                              <span className="text-[9px] font-mono uppercase bg-blue-500/20 text-blue-300 px-1.5 py-0.5 rounded border border-blue-500/30">
+                                Highest Defect Risk
+                              </span>
+                            )}
+                          </div>
+                          <code className="text-xs text-slate-400 font-mono block">
+                            {fn.signature}
+                          </code>
+                        </div>
+
+                        <button
+                          onClick={() => launchChallengeOnScannedFn(fn)}
+                          className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center justify-center gap-1.5 transition-all ${
+                            isSelected
+                              ? "bg-emerald-600 text-white shadow-sm"
+                              : "bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700"
+                          }`}
+                        >
+                          <Flame className="w-3.5 h-3.5 text-amber-400" />
+                          <span>{isSelected ? "Active in Simulator" : "Launch 3-Click Challenge"}</span>
+                        </button>
+                      </div>
+
+                      {/* Reasons Breakdown */}
+                      {fn.reasons.length > 0 && (
+                        <div className="mt-3 pt-2.5 border-t border-slate-800/60 flex flex-wrap gap-2 text-[10px]">
+                          {fn.reasons.map((r, rIdx) => (
+                            <span
+                              key={rIdx}
+                              className="px-2 py-0.5 rounded bg-slate-900 border border-slate-800 text-slate-300 font-sans"
+                            >
+                              • {r}
+                            </span>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Progress Stepper */}
       <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 my-8">
