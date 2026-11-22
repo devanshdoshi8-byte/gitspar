@@ -12,6 +12,8 @@ import {
 } from './git.js';
 import { discoverEligibleFunctions, createBoundaryMutant, EligibleFunction, MutationResult } from './ast.js';
 import { scoreFunctionRisk, FunctionRiskResult } from './risk-scorer.js';
+import { probeHighRiskFunction, ExecutedProbe } from './oracle-probe.js';
+import { compileAndSaveContract, HumanVerdictDecision } from './contract-compiler.js';
 import { runIsolatedVitestCheck } from './runner.js';
 import { saveReceipt, AssessmentReceipt } from './receipt.js';
 import { loadGitSparConfig } from './config.js';
@@ -307,6 +309,88 @@ export async function runCiCheck(cwd: string = process.cwd(), customThreshold?: 
   return 0;
 }
 
+async function runContractMode(
+  prompt: PromptInterface,
+  cwd: string,
+  selectedFunction: EligibleFunction
+): Promise<void> {
+  console.log(`\n${bold}${cyan}====================================================================${reset}`);
+  console.log(`${bold}${cyan}EXECUTABLE INTENT CONTRACT (JiT-ORACLE ENGINE)${reset}`);
+  console.log(`${bold}${cyan}====================================================================${reset}`);
+  console.log(`${dim}Probing high-signal edge cases and compiling human decisions into Vitest regression specs.${reset}\n`);
+
+  console.log(`Synthesizing edge-case probes targeting AI defect clusters...`);
+  const probeResult = await probeHighRiskFunction(selectedFunction.filePath, selectedFunction.functionName, cwd);
+  console.log(`Synthesized and executed ${bold}${probeResult.probes.length}${reset} edge cases in sandbox:\n`);
+
+  const decisions: HumanVerdictDecision[] = [];
+
+  for (let i = 0; i < probeResult.probes.length; i++) {
+    const probe = probeResult.probes[i];
+    console.log(`${bold}Edge Case #${i + 1} [${cyan}${probe.categoryLabel}${reset}]:`);
+    console.log(`  ${dim}Probe Goal:${reset}      ${probe.description}`);
+    console.log(`  ${dim}Input Arguments:${reset} ${cyan}${probe.inputArgsJson}${reset}`);
+    console.log(`  ${dim}Observed Output:${reset} ${green}${probe.actualOutputJson}${reset} ${dim}(${probe.executionMs}ms)${reset}`);
+
+    const ans = (
+      await prompt.question(
+        `  ${bold}Is this observed behavior the INTENDED product rule? ([I]ntended / [D]efect): ${reset}`
+      )
+    )
+      .trim()
+      .toLowerCase();
+
+    if (ans === 'd' || ans === 'defect') {
+      const expectedRaw = (
+        await prompt.question(`  ${yellow}Enter expected intended output (e.g. 90 or "approved"): ${reset}`)
+      ).trim();
+      let expectedParsed: unknown = expectedRaw;
+      try {
+        expectedParsed = JSON.parse(expectedRaw);
+      } catch {}
+
+      const note = (
+        await prompt.question(`  ${dim}Optional reason/intent note (or press Enter): ${reset}`)
+      ).trim();
+
+      decisions.push({
+        probe,
+        verdict: 'DEFECT',
+        expectedOutput: expectedParsed,
+        intentNote: note || undefined,
+      });
+      console.log(`  ${red}Flagged as DEFECT. Regression test will enforce expected rule.${reset}\n`);
+    } else {
+      const note = (
+        await prompt.question(`  ${dim}Optional intent note (or press Enter): ${reset}`)
+      ).trim();
+
+      decisions.push({
+        probe,
+        verdict: 'INTENDED',
+        intentNote: note || undefined,
+      });
+      console.log(`  ${green}Marked as INTENDED product rule.${reset}\n`);
+    }
+  }
+
+  // Compile and save contract
+  const compiled = compileAndSaveContract(
+    {
+      functionName: selectedFunction.functionName,
+      sourceFilePath: selectedFunction.filePath,
+      decisions,
+    },
+    cwd
+  );
+
+  console.log(`\n${bold}${green}🎉 Executable Intent Contract Compiled & Saved!${reset}`);
+  console.log(`  📄 Vitest Test Suite: ${cyan}${compiled.testFilePath}${reset}`);
+  console.log(`\n${bold}📋 PR Contract Table (Ready to paste into GitHub PR description):${reset}\n`);
+  console.log(compiled.prMarkdownTable);
+  console.log('');
+}
+
 export async function runCli(): Promise<void> {
   const prompt = new PromptInterface();
   const cwd = process.cwd();
@@ -403,8 +487,22 @@ export async function runCli(): Promise<void> {
     }
 
     console.log(
-      `\n${yellow}⚠️ High-risk logic detected (${risk.riskScore} >= threshold ${threshold}). Launching 45-second GitSpar verification drill...${reset}`
+      `\n${yellow}⚠️ High-risk logic detected (${risk.riskScore} >= threshold ${threshold}). Launching GitSpar verification engine...${reset}`
     );
+
+    // Parse mode option: --mode contract vs --mode spar
+    let modeArg: string | null = null;
+    const modeIdx = process.argv.indexOf('--mode');
+    if (modeIdx !== -1 && process.argv[modeIdx + 1]) {
+      modeArg = process.argv[modeIdx + 1].toLowerCase();
+    } else if (process.argv.includes('--contract')) {
+      modeArg = 'contract';
+    }
+
+    if (modeArg === 'contract') {
+      await runContractMode(prompt, cwd, selectedFunction);
+      return;
+    }
 
     // Explicit User Execution Approval (Rule 3)
     const approval = (

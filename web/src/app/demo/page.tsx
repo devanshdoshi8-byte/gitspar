@@ -26,12 +26,23 @@ import {
   Search,
   ExternalLink,
   ShieldAlert,
+  FileCode,
+  Table,
+  CheckSquare,
+  Layers,
 } from "lucide-react";
 import {
   scoreFunctionCode,
   parseExportedFunctionsFromSource,
   FunctionRiskResult,
 } from "@/lib/risk-scorer";
+import {
+  synthesizeClientProbes,
+  generateVitestRegressionSuite,
+  generatePrContractMarkdown,
+  HumanVerdictDecision,
+  ExecutedProbe,
+} from "@/lib/intent-contract";
 
 interface SamplePreset {
   name: string;
@@ -221,8 +232,79 @@ export default function DemoPage() {
     setIsCustomMode(true);
     setArgsInput(fn.defaultArgs || "100, false");
     setExpectedInput(fn.defaultExpected || "90");
+    setContractProbes(synthesizeClientProbes(fn.code, fn.functionName));
     resetDrill();
   };
+
+  // Engine Mode: 'drill' (3-Click Visual Challenge) vs 'contract' (Intent Contract JiT-Oracle)
+  const [activeEngineMode, setActiveEngineMode] = useState<"drill" | "contract">("drill");
+
+  // Intent Contract State
+  const [contractProbes, setContractProbes] = useState<ExecutedProbe[]>(() =>
+    synthesizeClientProbes(PRESETS[0].code, PRESETS[0].name)
+  );
+  const [contractVerdicts, setContractVerdicts] = useState<
+    Record<string, { verdict: "INTENDED" | "DEFECT"; expected?: string; note?: string }>
+  >({
+    "PROBE-1": { verdict: "INTENDED", note: "10% volume discount tier begins at exactly $100" },
+    "PROBE-2": { verdict: "INTENDED", note: "Zero order amount correctly defaults to zero discount" },
+    "PROBE-3": { verdict: "DEFECT", expected: "80.80", note: "AI penny-rounding defect: expected 80.80 rounded to cents" },
+  });
+  const [copiedContractTest, setCopiedContractTest] = useState<boolean>(false);
+  const [copiedContractMd, setCopiedContractMd] = useState<boolean>(false);
+  const [contractPreviewTab, setContractPreviewTab] = useState<"test" | "markdown">("test");
+
+  const updateContractVerdict = (probeId: string, verdict: "INTENDED" | "DEFECT") => {
+    setContractVerdicts((prev) => ({
+      ...prev,
+      [probeId]: {
+        ...prev[probeId],
+        verdict,
+      },
+    }));
+  };
+
+  const updateContractNote = (probeId: string, note: string) => {
+    setContractVerdicts((prev) => ({
+      ...prev,
+      [probeId]: {
+        ...prev[probeId],
+        note,
+      },
+    }));
+  };
+
+  const updateContractExpected = (probeId: string, expected: string) => {
+    setContractVerdicts((prev) => ({
+      ...prev,
+      [probeId]: {
+        ...prev[probeId],
+        expected,
+      },
+    }));
+  };
+
+  const contractDecisions: HumanVerdictDecision[] = contractProbes.map((probe) => {
+    const v = contractVerdicts[probe.probeId] || { verdict: "INTENDED" };
+    return {
+      probe,
+      verdict: v.verdict,
+      expectedOutput: v.expected !== undefined ? v.expected : probe.actualOutput,
+      intentNote: v.note,
+    };
+  });
+
+  const generatedRegressionTest = generateVitestRegressionSuite({
+    functionName: currentSample.name,
+    sourceFilePath: currentSample.file,
+    decisions: contractDecisions,
+  });
+
+  const generatedContractMarkdown = generatePrContractMarkdown({
+    functionName: currentSample.name,
+    sourceFilePath: currentSample.file,
+    decisions: contractDecisions,
+  });
 
   const switchPreset = (index: number) => {
     setActiveTab(index);
@@ -231,6 +313,7 @@ export default function DemoPage() {
     setCustomCode(p.code);
     setArgsInput(p.defaultArgs);
     setExpectedInput(p.defaultExpected);
+    setContractProbes(synthesizeClientProbes(p.code, p.name));
     resetDrill();
   };
 
@@ -756,8 +839,48 @@ export default function DemoPage() {
         </div>
       )}
 
-      {/* Progress Stepper */}
-      <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 my-8">
+      {/* Engine Mode Switcher */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-2 rounded-2xl bg-slate-900 border border-slate-800 my-6">
+        <div className="flex items-center gap-1.5 sm:gap-2">
+          <button
+            onClick={() => setActiveEngineMode("drill")}
+            className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-semibold transition-all ${
+              activeEngineMode === "drill"
+                ? "bg-blue-600 text-white shadow-md shadow-blue-600/20"
+                : "text-slate-400 hover:text-white"
+            }`}
+          >
+            <Flame className="w-3.5 h-3.5 text-amber-400" />
+            <span>Mutation Drill Challenge</span>
+          </button>
+          <button
+            onClick={() => setActiveEngineMode("contract")}
+            className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-semibold transition-all ${
+              activeEngineMode === "contract"
+                ? "bg-indigo-600 text-white shadow-md shadow-indigo-600/20"
+                : "text-slate-400 hover:text-white"
+            }`}
+          >
+            <Shield className="w-3.5 h-3.5 text-indigo-300" />
+            <span>Intent Contract (JiT-Oracle)</span>
+            <span className="text-[9px] uppercase px-1.5 py-0.5 rounded bg-indigo-500/30 text-indigo-200 border border-indigo-400/30 font-mono">
+              New
+            </span>
+          </button>
+        </div>
+
+        <div className="flex items-center gap-2 text-[11px] text-slate-400 pr-2 font-mono">
+          <span>Target Logic:</span>
+          <code className="text-white font-bold bg-slate-950 px-2 py-0.5 rounded border border-slate-800">
+            {currentSample.name}()
+          </code>
+        </div>
+      </div>
+
+      {activeEngineMode === "drill" ? (
+        <>
+          {/* Progress Stepper */}
+          <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 my-8">
         {[
           { num: 1, label: "Blind Specification", icon: EyeOff },
           { num: 2, label: "Baseline Check", icon: CheckCircle2 },
@@ -1201,6 +1324,223 @@ export default function DemoPage() {
           </div>
         </div>
       )}
+    </>
+  ) : (
+    /* Intent Contract (JiT-Oracle) Interactive Workspace */
+    <div className="space-y-6 animate-in fade-in duration-150">
+      {/* Header Banner */}
+      <div className="p-6 rounded-2xl border border-indigo-500/30 bg-gradient-to-br from-indigo-950/40 via-slate-900/60 to-slate-950 backdrop-blur space-y-2">
+        <div className="flex items-center gap-2 text-indigo-400 text-xs font-mono font-semibold uppercase tracking-wider">
+          <Shield className="w-4 h-4 text-indigo-400" />
+          <span>Executable Intent Contract (JiT-Oracle Engine)</span>
+        </div>
+        <h2 className="text-xl sm:text-2xl font-bold text-white">
+          Probe Edge Cases & Compile Owner Intent into Vitest Specs
+        </h2>
+        <p className="text-xs sm:text-sm text-slate-300 max-w-3xl">
+          Unlike static code quizzes, the JiT-Oracle synthesizes reachable edge-case probes targeting common AI defect clusters (exact boundaries, zero baselines, floating-point penny rounding). Declare your intended business rule below to generate a permanent regression test suite and PR verification contract.
+        </p>
+      </div>
+
+      {/* 3 Edge-Case Trace Probes Grid */}
+      <div className="space-y-4">
+        <div className="flex items-center justify-between">
+          <h3 className="text-sm font-bold text-slate-200 flex items-center gap-2">
+            <Layers className="w-4 h-4 text-indigo-400" />
+            <span>Synthesized High-Signal Edge Case Probes ({contractProbes.length}):</span>
+          </h3>
+          <span className="text-xs text-slate-400 font-mono">
+            Function: <code className="text-indigo-300">{currentSample.name}()</code>
+          </span>
+        </div>
+
+        <div className="grid grid-cols-1 gap-4">
+          {contractProbes.map((probe, idx) => {
+            const verdictState = contractVerdicts[probe.probeId] || { verdict: "INTENDED" };
+            const isIntended = verdictState.verdict === "INTENDED";
+            return (
+              <div
+                key={probe.probeId}
+                className={`p-5 rounded-2xl border transition-all ${
+                  isIntended
+                    ? "bg-slate-900/60 border-emerald-500/30 hover:border-emerald-500/50"
+                    : "bg-slate-900/60 border-rose-500/40 hover:border-rose-500/60 ring-1 ring-rose-500/20"
+                }`}
+              >
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-800">
+                  <div className="space-y-1">
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs font-mono font-bold text-white uppercase">
+                        Case #{idx + 1}: {probe.categoryLabel}
+                      </span>
+                      {probe.isFloatOutput && (
+                        <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-amber-500/10 text-amber-300 border border-amber-500/20">
+                          Floating-Point IEEE-754
+                        </span>
+                      )}
+                    </div>
+                    <p className="text-xs text-slate-400">{probe.description}</p>
+                  </div>
+
+                  {/* Verdict Toggle Buttons */}
+                  <div className="flex items-center gap-1.5 p-1 rounded-xl bg-slate-950 border border-slate-800">
+                    <button
+                      onClick={() => updateContractVerdict(probe.probeId, "INTENDED")}
+                      className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
+                        isIntended
+                          ? "bg-emerald-600 text-white shadow-sm"
+                          : "text-slate-400 hover:text-white"
+                      }`}
+                    >
+                      <Check className="w-3.5 h-3.5" />
+                      <span>Intended Rule</span>
+                    </button>
+                    <button
+                      onClick={() => updateContractVerdict(probe.probeId, "DEFECT")}
+                      className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
+                        !isIntended
+                          ? "bg-rose-600 text-white shadow-sm"
+                          : "text-slate-400 hover:text-white"
+                      }`}
+                    >
+                      <AlertTriangle className="w-3.5 h-3.5" />
+                      <span>AI Defect</span>
+                    </button>
+                  </div>
+                </div>
+
+                {/* Inputs & Observed Trace */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 py-3 text-xs font-mono">
+                  <div className="p-2.5 rounded-xl bg-slate-950 border border-slate-800/80">
+                    <span className="text-slate-500 text-[10px] block mb-0.5">INPUT ARGUMENTS</span>
+                    <code className="text-cyan-300 font-bold">{probe.inputArgsJson}</code>
+                  </div>
+                  <div className="p-2.5 rounded-xl bg-slate-950 border border-slate-800/80">
+                    <span className="text-slate-500 text-[10px] block mb-0.5">
+                      OBSERVED OUTPUT ({probe.executionMs}ms)
+                    </span>
+                    <code
+                      className={`font-bold ${
+                        isIntended ? "text-emerald-400" : "text-rose-400"
+                      }`}
+                    >
+                      {probe.actualOutputJson}
+                    </code>
+                  </div>
+                </div>
+
+                {/* Defect Expected Input or Intent Note */}
+                <div className="pt-2 flex flex-col sm:flex-row gap-3">
+                  {!isIntended && (
+                    <div className="flex-1">
+                      <label className="block text-[11px] font-semibold text-rose-300 mb-1">
+                        Required Correct Output (Expected Product Rule):
+                      </label>
+                      <input
+                        type="text"
+                        value={verdictState.expected ?? ""}
+                        onChange={(e) => updateContractExpected(probe.probeId, e.target.value)}
+                        placeholder="e.g. 80.80"
+                        className="w-full px-3 py-1.5 rounded-lg bg-slate-950 border border-rose-500/40 text-rose-200 text-xs font-mono focus:outline-none focus:border-rose-400"
+                      />
+                    </div>
+                  )}
+                  <div className="flex-1">
+                    <label className="block text-[11px] font-semibold text-slate-300 mb-1">
+                      Intent Specification / Business Rationale:
+                    </label>
+                    <input
+                      type="text"
+                      value={verdictState.note ?? ""}
+                      onChange={(e) => updateContractNote(probe.probeId, e.target.value)}
+                      placeholder="e.g. Volume tier includes threshold values >= 100"
+                      className="w-full px-3 py-1.5 rounded-lg bg-slate-950 border border-slate-800 text-slate-200 text-xs font-sans focus:outline-none focus:border-indigo-500"
+                    />
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* Compiled Output Preview (Vitest Test Suite + PR Markdown Table) */}
+      <div className="rounded-2xl border border-slate-800 bg-slate-900/60 p-5 sm:p-6 space-y-4 backdrop-blur">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-800 pb-3">
+          <div className="flex items-center gap-2">
+            <FileCode className="w-5 h-5 text-indigo-400" />
+            <h3 className="text-base font-bold text-white">Compiled Executable Contract Artifacts</h3>
+          </div>
+
+          {/* Tabs */}
+          <div className="flex items-center gap-1.5 p-1 rounded-xl bg-slate-950 border border-slate-800 text-xs font-medium">
+            <button
+              onClick={() => setContractPreviewTab("test")}
+              className={`px-3 py-1.5 rounded-lg transition-all ${
+                contractPreviewTab === "test"
+                  ? "bg-indigo-600 text-white shadow-sm font-semibold"
+                  : "text-slate-400 hover:text-white"
+              }`}
+            >
+              Vitest Test Suite (.spar.test.ts)
+            </button>
+            <button
+              onClick={() => setContractPreviewTab("markdown")}
+              className={`px-3 py-1.5 rounded-lg transition-all ${
+                contractPreviewTab === "markdown"
+                  ? "bg-indigo-600 text-white shadow-sm font-semibold"
+                  : "text-slate-400 hover:text-white"
+              }`}
+            >
+              GitHub PR Contract Table (.md)
+            </button>
+          </div>
+        </div>
+
+        {contractPreviewTab === "test" ? (
+          <div className="space-y-3">
+            <div className="flex items-center justify-between text-xs text-slate-400">
+              <span>File: <code className="text-indigo-300 font-mono">{currentSample.name}.spar.test.ts</code></span>
+              <button
+                onClick={() => {
+                  navigator.clipboard.writeText(generatedRegressionTest);
+                  setCopiedContractTest(true);
+                  setTimeout(() => setCopiedContractTest(false), 2000);
+                }}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-mono font-medium transition-colors"
+              >
+                {copiedContractTest ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
+                <span>{copiedContractTest ? "Copied Vitest Suite!" : "Copy Test File"}</span>
+              </button>
+            </div>
+            <div className="rounded-xl border border-slate-800 bg-slate-950 p-4 font-mono text-xs text-emerald-300/90 overflow-x-auto max-h-96">
+              <pre className="whitespace-pre-wrap">{generatedRegressionTest}</pre>
+            </div>
+          </div>
+        ) : (
+          <div className="space-y-3">
+            <div className="flex items-center justify-between text-xs text-slate-400">
+              <span>Ready to paste into GitHub PR description</span>
+              <button
+                onClick={() => {
+                  navigator.clipboard.writeText(generatedContractMarkdown);
+                  setCopiedContractMd(true);
+                  setTimeout(() => setCopiedContractMd(false), 2000);
+                }}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-mono font-medium transition-colors"
+              >
+                {copiedContractMd ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
+                <span>{copiedContractMd ? "Copied Markdown Table!" : "Copy PR Table"}</span>
+              </button>
+            </div>
+            <div className="rounded-xl border border-slate-800 bg-slate-950 p-4 font-mono text-xs text-slate-300 overflow-x-auto max-h-96">
+              <pre className="whitespace-pre-wrap">{generatedContractMarkdown}</pre>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  )}
     </div>
   );
 }
